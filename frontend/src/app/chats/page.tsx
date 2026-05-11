@@ -1,70 +1,322 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  createChat,
+  createPressReview,
+  fetchBreakingNews,
+  listAllPressReviews,
+  listChats,
+  listMessages,
+  listReviews,
+  sendMessage,
+  type ChatDTO,
+  type MessageDTO,
+  type PressReviewDTO,
+} from "@/lib/api";
 import { clearSession, getStoredEmail, isAuthenticated } from "@/lib/auth";
-
-const MOCK_CHATS = [
-  { id: "1", title: "Discussion du", updatedAt: "10/12/2026" },
-  { id: "2", title: "Discussion du", updatedAt: "10/12/2026" },
-  { id: "3", title: "Discussion du", updatedAt: "10/12/2026" },
-  { id: "4", title: "Discussion du", updatedAt: "10/12/2026" },
-  { id: "5", title: "Discussion du", updatedAt: "10/12/2026" },
-  { id: "6", title: "Discussion du", updatedAt: "10/12/2026" },
-  { id: "7", title: "Discussion du", updatedAt: "10/12/2026" },
-];
-
-const MOCK_REVIEWS = [
-  {
-    id: "r1",
-    title: "ACTUALITES POLITIQUES - SEMAINE 39",
-    date: "mardi 30 septembre 2025 a 09:00",
-  },
-  {
-    id: "r2",
-    title: "ACTUALITES POLITIQUES - SEMAINE 39",
-    date: "mardi 30 septembre 2025 a 09:00",
-  },
-];
 
 type ViewMode = "home" | "chat" | "review";
 
+type AuthSnapshot = {
+  ready: boolean;
+  authenticated: boolean;
+  email: string;
+};
+
+const SERVER_AUTH_SNAPSHOT: AuthSnapshot = {
+  ready: false,
+  authenticated: false,
+  email: "",
+};
+
+let clientAuthSnapshot: AuthSnapshot = {
+  ready: true,
+  authenticated: false,
+  email: "",
+};
+
+function getClientAuthSnapshot(): AuthSnapshot {
+  const nextSnapshot: AuthSnapshot = {
+    ready: true,
+    authenticated: isAuthenticated(),
+    email: getStoredEmail() ?? "",
+  };
+
+  if (
+    clientAuthSnapshot.authenticated !== nextSnapshot.authenticated ||
+    clientAuthSnapshot.email !== nextSnapshot.email
+  ) {
+    clientAuthSnapshot = nextSnapshot;
+  }
+
+  return clientAuthSnapshot;
+}
+
+function formatFrDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  } catch {
+    return "";
+  }
+}
+
 export default function ChatsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [prompt, setPrompt] = useState("");
-  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
-  const [reviewTopic, setReviewTopic] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("home");
   const [activeTab, setActiveTab] = useState<"chat" | "review">("chat");
-  const authenticated = isAuthenticated();
-  const email = getStoredEmail();
+  const [chats, setChats] = useState<ChatDTO[]>([]);
+  const [selectedConversationId, setSelectedConversationId] = useState<
+    number | null
+  >(null);
+  const [messages, setMessages] = useState<MessageDTO[]>([]);
+  const [reviews, setReviews] = useState<PressReviewDTO[]>([]);
+  const [allPressReviews, setAllPressReviews] = useState<PressReviewDTO[]>([]);
+  const [reviewTopic, setReviewTopic] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const autoNewsAttempted = useRef<Set<number>>(new Set());
+
+  const authState = useSyncExternalStore(
+    () => () => undefined,
+    getClientAuthSnapshot,
+    () => SERVER_AUTH_SNAPSHOT,
+  );
+  const isReviewRoute = searchParams.get("tab") === "review";
+  const currentTab = isReviewRoute ? "review" : activeTab;
+  const currentViewMode = isReviewRoute ? "review" : viewMode;
 
   useEffect(() => {
-    if (!authenticated) {
+    if (authState.ready && !authState.authenticated) {
       router.replace("/login");
     }
-  }, [authenticated, router]);
+  }, [authState.authenticated, authState.ready, router]);
+
+  useEffect(() => {
+    if (!authState.authenticated || !isAuthenticated()) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const all = await listAllPressReviews();
+        if (!cancelled) {
+          setAllPressReviews(all);
+        }
+      } catch {
+        if (!cancelled) {
+          setAllPressReviews([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authState.authenticated]);
+
+  const loadConversationData = useCallback(async (conversationId: number) => {
+    if (!isAuthenticated()) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const msgs = await listMessages(conversationId);
+      setMessages(msgs);
+      setViewMode(msgs.length === 0 ? "home" : "chat");
+
+      if (
+        msgs.length === 0 &&
+        !autoNewsAttempted.current.has(conversationId)
+      ) {
+        autoNewsAttempted.current.add(conversationId);
+        try {
+          await fetchBreakingNews(conversationId, "actualites");
+        } catch {
+          /* WORLDNEWS_API_KEY optionnelle */
+        }
+      }
+
+      const revs = await listReviews(conversationId);
+      setReviews(revs);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Erreur de chargement",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!authState.authenticated) {
+      return;
+    }
+    if (!isAuthenticated()) {
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      setBusy(true);
+      setError(null);
+      try {
+        let items = await listChats();
+        if (items.length === 0) {
+          await createChat();
+          items = await listChats();
+        }
+        if (cancelled) {
+          return;
+        }
+        setChats(items);
+        setSelectedConversationId((prev) => prev ?? items[0]?.id ?? null);
+      } catch (requestError) {
+        if (!cancelled) {
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : "Erreur de chargement",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setBusy(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authState.authenticated]);
+
+  useEffect(() => {
+    if (!authState.authenticated || selectedConversationId === null) {
+      return;
+    }
+    const conversationId = selectedConversationId;
+    queueMicrotask(() => {
+      void loadConversationData(conversationId);
+    });
+  }, [authState.authenticated, selectedConversationId, loadConversationData]);
 
   function handleLogout() {
     clearSession();
     router.push("/login");
   }
 
-  function handleSubmitPrompt() {
-    if (!prompt.trim()) {
+  async function handleSubmitPrompt() {
+    if (!prompt.trim() || selectedConversationId === null) {
       return;
     }
-    setViewMode("chat");
-    setActiveTab("chat");
-    setPrompt("");
+    if (!isAuthenticated()) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await sendMessage(selectedConversationId, prompt.trim());
+      setPrompt("");
+      await loadConversationData(selectedConversationId);
+      const items = await listChats();
+      setChats(items);
+      setViewMode("chat");
+      router.push("/chats");
+      setActiveTab("chat");
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Envoi impossible",
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function handleGenerateReview() {
-    setIsReviewModalOpen(true);
+  async function handleNewConversation() {
+    if (!isAuthenticated()) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await createChat();
+      try {
+        await fetchBreakingNews(created.id, "actualites");
+      } catch {
+        /* optionnel */
+      }
+      const items = await listChats();
+      setChats(items);
+      setSelectedConversationId(created.id);
+      router.push("/chats");
+      setActiveTab("chat");
+      setViewMode("home");
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Creation impossible",
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
-  if (!authenticated) {
+  async function handleGenerateReview() {
+    if (!reviewTopic.trim() || selectedConversationId === null) {
+      return;
+    }
+    if (!isAuthenticated()) {
+      return;
+    }
+    const topic = reviewTopic.trim();
+    const chatId = selectedConversationId;
+    setBusy(true);
+    setError(null);
+    try {
+      try {
+        await fetchBreakingNews(chatId, topic);
+      } catch {
+        /* Articles optionnels : la revue peut reposer sur l’historique du chat seul. */
+      }
+      await createPressReview(chatId, topic);
+      setReviewTopic("");
+      const revs = await listReviews(chatId);
+      setReviews(revs);
+      try {
+        setAllPressReviews(await listAllPressReviews());
+      } catch {
+        /* ignore */
+      }
+    } catch (requestError) {
+      const msg =
+        requestError instanceof Error
+          ? requestError.message
+          : "Generation impossible";
+      setError(
+        msg.includes("Aucun article") || msg.includes("news/fetch")
+          ? `${msg} Astuce : élargissez le thème ou vérifiez que WORLDNEWS_API_KEY est bien définie côté serveur.`
+          : msg,
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!authState.ready || !authState.authenticated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <p className="text-slate-600">Chargement...</p>
@@ -79,24 +331,39 @@ export default function ChatsPage() {
           <aside className="flex h-full flex-col border-r border-slate-200 bg-white">
             <div className="border-b border-slate-200 px-5 py-5">
               <h1 className="text-xs font-medium text-[#803cda]">NEWSFOUNDRY</h1>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void handleNewConversation()}
+                className="mt-3 w-full rounded-md border border-[#803cda] px-3 py-2 text-xs font-medium text-[#898989] hover:bg-[#f4f4fb] disabled:opacity-50"
+              >
+                Nouvelle discussion
+              </button>
             </div>
             <ul className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-              {MOCK_CHATS.map((chat) => (
+              {chats.map((chat) => (
                 <li
                   key={chat.id}
-                  className="rounded-md border border-slate-200 p-3 hover:bg-slate-50 cursor-pointer"
+                  className={`cursor-pointer rounded-md border p-3 hover:bg-slate-50 ${
+                    selectedConversationId === chat.id
+                      ? "border-[#803cda] bg-[#f4f4fb]"
+                      : "border-slate-200"
+                  }`}
                   onClick={() => {
-                    setViewMode("chat");
+                    setSelectedConversationId(chat.id);
+                    router.push("/chats");
                     setActiveTab("chat");
                   }}
                 >
                   <p className="text-sm font-medium text-slate-900">{chat.title}</p>
-                  <p className="text-xs text-slate-500">{chat.updatedAt}</p>
+                  <p className="text-xs text-slate-500">
+                    {formatFrDate(chat.updated_at)}
+                  </p>
                 </li>
               ))}
             </ul>
             <button
-              className="m-4 rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-100"
+              className="m-4 rounded-md border border-slate-300 px-3 py-2 text-sm text-[#898989] hover:bg-slate-100"
               onClick={handleLogout}
             >
               Se deconnecter
@@ -105,45 +372,44 @@ export default function ChatsPage() {
 
           <section className="flex h-full flex-col bg-[#f4f4fb]">
             <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    setActiveTab("chat");
-                    setViewMode("home");
-                  }}
-                  className={`rounded-md px-3 py-1.5 text-xs ${
-                    activeTab === "chat"
-                      ? "bg-[#803cda] text-white"
-                      : "border border-slate-300 bg-white text-slate-700"
-                  }`}
-                >
-                  Chat
-                </button>
-                <button
-                  onClick={() => {
-                    setActiveTab("review");
-                    setViewMode("review");
-                  }}
-                  className={`rounded-md px-3 py-1.5 text-xs ${
-                    activeTab === "review"
-                      ? "bg-[#803cda] text-white"
-                      : "border border-slate-300 bg-white text-slate-700"
-                  }`}
-                >
-                  Revue de presse
-                </button>
+              <div className="flex flex-1 flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      router.push("/chats");
+                      setActiveTab("chat");
+                      setViewMode("chat");
+                    }}
+                    className={`rounded-md px-3 py-1.5 text-xs ${
+                      currentTab === "chat"
+                        ? "bg-[#803cda] text-white"
+                        : "border border-slate-300 bg-white text-[#898989]"
+                    }`}
+                  >
+                    Chat
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      router.push("/chats?tab=review");
+                    }}
+                    className={`rounded-md px-3 py-1.5 text-xs ${
+                      currentTab === "review"
+                        ? "bg-[#803cda] text-white"
+                        : "border border-slate-300 bg-white text-[#898989]"
+                    }`}
+                  >
+                    Revue de presse
+                  </button>
+                </div>
+                {error ? (
+                  <p className="text-xs text-red-600">{error}</p>
+                ) : null}
               </div>
-              {activeTab === "chat" ? (
-                <button
-                  className="rounded-md bg-[#803cda] px-4 py-2 text-sm font-medium text-white hover:bg-[#6f2fc3]"
-                  onClick={handleGenerateReview}
-                >
-                  Generer une revue de presse
-                </button>
-              ) : null}
             </header>
 
-            {activeTab === "chat" && viewMode === "home" ? (
+            {currentTab === "chat" && currentViewMode === "home" ? (
               <div className="flex flex-1 items-center justify-center p-8">
                 <div className="w-full max-w-[620px] rounded-xl bg-white px-12 py-14 text-center shadow-sm">
                   <div className="flex justify-center">
@@ -152,10 +418,11 @@ export default function ChatsPage() {
                       alt="Robot NewsFoundry"
                       width={76}
                       height={76}
+                      className="h-auto w-[76px]"
                       priority
                     />
                   </div>
-                  <h3 className="mt-4 text-4 font-semibold text-[#803cda]">
+                  <h3 className="mt-4 text-lg font-semibold text-[#803cda]">
                     Assistant Revue de Presse IA
                   </h3>
                   <p className="mt-4 text-sm text-slate-500">
@@ -172,61 +439,118 @@ export default function ChatsPage() {
               </div>
             ) : null}
 
-            {activeTab === "chat" && viewMode === "chat" ? (
+            {currentTab === "chat" && currentViewMode === "chat" ? (
               <div className="flex-1 overflow-y-auto p-8">
                 <div className="mx-auto max-w-4xl space-y-6">
-                  <div className="ml-auto w-[420px] rounded-md bg-[#23232f] p-4 text-sm text-white">
-                    Peux-tu me donner les dernieres actualites politiques ?
-                  </div>
-                  <div className="w-[560px] rounded-md bg-white p-4 text-sm text-slate-700">
-                    Voici un resume des dernieres nouvelles politiques :
-                    <br />- Le gouvernement a annonce de nouvelles mesures
-                    economiques
-                    <br />- Debat sur la reforme des retraites au Parlement
-                    <br />- Visite diplomatique prevue la semaine prochaine
-                  </div>
-                  <div className="ml-auto w-[420px] rounded-md bg-[#23232f] p-4 text-sm text-white">
-                    Je suis curieux des applications dans la sante et l&apos;education.
-                  </div>
+                  {messages.map((m) =>
+                    m.role === "user" ? (
+                      <div
+                        key={m.id}
+                        className="ml-auto max-w-[420px] rounded-md bg-[#23232f] p-4 text-sm text-white"
+                      >
+                        {m.content}
+                      </div>
+                    ) : (
+                      <div
+                        key={m.id}
+                        className="max-w-[560px] rounded-md bg-white p-4 text-sm text-slate-700 whitespace-pre-wrap"
+                      >
+                        {m.content}
+                      </div>
+                    ),
+                  )}
                 </div>
               </div>
             ) : null}
 
-            {activeTab === "review" ? (
+            {currentTab === "review" ? (
               <div className="flex-1 overflow-y-auto p-8">
                 <div className="mx-auto max-w-4xl space-y-4">
-                  <h3 className="text-3 font-semibold text-slate-800">Revues de Presse</h3>
+                  <h3 className="text-lg font-semibold text-slate-800">Revues de Presse</h3>
                   <p className="text-sm text-slate-500">
-                    Consultez et gerez vos revues de presse generees par l&apos;IA
+                    Choisissez un sujet puis generez une revue a partir de l&apos;historique de la
+                    discussion. Retrouvez ci-dessous toutes vos revues (toutes discussions).
                   </p>
-                  {MOCK_REVIEWS.map((review) => (
+                  <div className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="min-w-[200px] flex-1">
+                      <label className="block text-xs font-medium text-slate-600">
+                        Sujet de la revue de presse
+                      </label>
+                      <input
+                        value={reviewTopic}
+                        onChange={(event) => setReviewTopic(event.target.value)}
+                        placeholder="Ex. technologie et emploi"
+                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-[#898989] outline-none focus:border-[#803cda]"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={busy || !reviewTopic.trim()}
+                      onClick={() => void handleGenerateReview()}
+                      className="rounded-md bg-[#803cda] px-4 py-2 text-sm font-medium text-white hover:bg-[#6f2fc3] disabled:opacity-50"
+                    >
+                      Generer la revue de presse
+                    </button>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4">
+                    <h4 className="text-sm font-semibold text-slate-800">
+                      Toutes vos revues (toutes discussions)
+                    </h4>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {allPressReviews.length === 0
+                        ? "Aucune revue pour le moment."
+                        : `${allPressReviews.length} revue(s).`}
+                    </p>
+                    <ul className="mt-3 max-h-[220px] space-y-2 overflow-y-auto text-xs">
+                      {allPressReviews.map((r) => (
+                        <li
+                          key={`${r.chat_id}-${r.id}`}
+                          className="rounded border border-slate-200 bg-white px-3 py-2 text-slate-700"
+                        >
+                          <span className="font-medium text-[#803cda]">
+                            {r.review_title || r.topic}
+                          </span>
+                          {r.chat_title ? (
+                            <span className="text-slate-500"> — {r.chat_title}</span>
+                          ) : null}
+                          {r.general_summary ? (
+                            <p className="mt-1 line-clamp-2 text-slate-600">{r.general_summary}</p>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  {reviews.map((review) => (
                     <article
                       key={review.id}
                       className="rounded-lg bg-white p-6 shadow-sm"
                     >
-                      <div className="mb-3 flex items-center justify-between">
+                      <div className="mb-3 flex items-center justify-between gap-2">
                         <div>
                           <h4 className="text-sm font-semibold text-slate-800">
-                            {review.title}
+                            {review.review_title || review.topic}
                           </h4>
-                          <p className="text-xs text-slate-500">{review.date}</p>
+                          <p className="text-xs text-slate-500">
+                            Sujet : {review.topic} — {formatFrDate(review.created_at)}
+                          </p>
+                          {review.general_summary ? (
+                            <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                              {review.general_summary}
+                            </p>
+                          ) : null}
                         </div>
-                        <button className="rounded-md bg-[#282833] px-4 py-2 text-xs text-white">
+                        <button
+                          type="button"
+                          className="shrink-0 rounded-md bg-[#282833] px-4 py-2 text-xs text-[#898989]"
+                          onClick={() =>
+                            void navigator.clipboard.writeText(review.content)
+                          }
+                        >
                           Copier
                         </button>
                       </div>
-                      <p className="text-sm leading-6 text-slate-700">
-                        **REVUE DE PRESSE POLITIQUE - 30 Septembre 2025**
-                        <br />
-                        **Synthese hebdomadaire des principales actualites
-                        politiques**
-                        <br />
-                        - **Reforme economique** : Le gouvernement a presente son
-                        plan de relance.
-                        <br />- **Relations internationales** : Preparation du
-                        sommet europeen.
-                        <br />- **Politique interieure** : Debats parlementaires
-                        sur la reforme du systeme de sante.
+                      <p className="text-sm leading-6 text-slate-700 whitespace-pre-wrap">
+                        {review.content}
                       </p>
                     </article>
                   ))}
@@ -234,64 +558,54 @@ export default function ChatsPage() {
               </div>
             ) : null}
 
-            <div className="border-t border-slate-200 bg-white p-4">
-              <div className="flex gap-2">
-                <input
-                  value={prompt}
-                  onChange={(event) => setPrompt(event.target.value)}
-                  placeholder="Tapez votre message ici..."
-                  className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#803cda]"
-                />
-                <button
-                  onClick={handleSubmitPrompt}
-                  className="rounded-md bg-[#803cda] px-4 py-2 text-sm font-medium text-white hover:bg-[#6f2fc3]"
-                >
-                  Envoyer
-                </button>
+            {currentTab === "chat" ? (
+              <div className="border-t border-slate-200 bg-white p-4">
+                <div className="flex gap-2">
+                  <input
+                    value={prompt}
+                    onChange={(event) => setPrompt(event.target.value)}
+                    placeholder="Tapez votre message ici..."
+                    disabled={busy}
+                    className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm text-[#898989] outline-none focus:border-[#803cda] disabled:bg-slate-50"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        void handleSubmitPrompt();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleSubmitPrompt()}
+                    disabled={busy}
+                    className="rounded-md disabled:opacity-40"
+                    aria-label="Envoyer"
+                  >
+                    <Image
+                      src="/EnvoiR.png"
+                      alt="Envoyer"
+                      width={40}
+                      height={40}
+                      className="h-10 w-auto"
+                    />
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  Connecte en tant que {authState.email}
+                  {busy ? " — envoi en cours…" : ""}
+                </p>
               </div>
-              <p className="mt-2 text-xs text-slate-500">
-                Connecte en tant que {email}
-              </p>
-            </div>
+            ) : (
+              <div className="border-t border-slate-200 bg-white px-4 py-3">
+                <p className="text-xs text-slate-500">
+                  Connecte en tant que {authState.email}
+                  {busy ? " — operation en cours…" : ""}
+                </p>
+              </div>
+            )}
           </section>
         </div>
       </main>
-
-      {isReviewModalOpen ? (
-        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-6">
-          <div className="h-[370px] w-[556px] rounded-xl bg-white p-8 shadow-xl">
-            <div className="flex items-start justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">
-                Generer une revue de presse
-              </h3>
-              <button
-                onClick={() => setIsReviewModalOpen(false)}
-                className="text-sm text-slate-500 hover:text-slate-800"
-              >
-                Fermer
-              </button>
-            </div>
-            <p className="mt-2 text-sm text-slate-500">
-              Donner un titre a votre revue de presse
-            </p>
-
-            <label className="mt-8 block text-sm font-medium text-slate-700">
-              Theme de la revue de presse
-            </label>
-            <input
-              value={reviewTopic}
-              onChange={(event) => setReviewTopic(event.target.value)}
-              className="mt-2 w-full rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-sm outline-none focus:border-[#803cda]"
-            />
-            <button
-              onClick={() => setIsReviewModalOpen(false)}
-              className="mt-6 w-full rounded-md bg-[#282833] px-4 py-2 text-sm font-medium text-white hover:bg-[#1f1f29]"
-            >
-              Generer
-            </button>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

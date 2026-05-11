@@ -6,6 +6,8 @@ COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen
 
 COPY backend/src/ ./src/
+COPY backend/alembic.ini ./
+COPY backend/alembic/ ./alembic/
 
 EXPOSE 8000
 

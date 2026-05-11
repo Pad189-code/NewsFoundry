@@ -51,17 +51,23 @@ Elle devra inclure des suggestions d'amélioration concernant la qualité et la 
 
 Par ailleurs, pour faciliter la maintenance du projet à long terme, le code du projet devra être clair et bien structuré, accompagné de commentaires qui expliquent les sections de code complexes.
 
-### Deploiement
+### Déploiement
 
-L'url de l'application déployée devra être ajouté dans la documentation.
+#### URL du frontend (production)
+
+| | |
+|--|--|
+| **URL à documenter ici** | `https://____________.vercel.app` *(à remplacer après le premier déploiement — voir ci-dessous)* |
+| **Quand l’URL est disponible** | **Dès que le premier déploiement Vercel a réussi** (quelques minutes après le push ou « Deploy »). Elle apparaît dans le tableau de bord du projet Vercel : **Settings → Domains** ou en tête du dernier déploiement (**Visit**). Par défaut c’est `https://<nom-du-projet>.vercel.app` ; un domaine personnalisé s’affiche une fois configuré. Chaque **preview** de branche a aussi sa propre URL (`*.vercel.app`). |
+| **Variable côté Vercel** | Définir **`NEXT_PUBLIC_API_URL`** sur l’URL HTTPS publique du backend. |
+| **Variable côté backend** | Ajouter l’URL du frontend dans **`CORS_ORIGINS`** (séparateur virgule si plusieurs origines). |
 
 #### Frontend
 
-Déployer le frontend sur [Vercel](https://vercel.com/dashboard).
+Déployer le frontend sur [Vercel](https://vercel.com/dashboard). Dans un monorepo, régler le **Root Directory** du projet Vercel sur **`frontend`**.
 
 #### Backend
 
-Déployer le backend sur [Railway](https://railway.com/dashboard).
+Déployer le backend sur [Railway](https://railway.com/dashboard). Le `Dockerfile` sous `backend/` suppose un **contexte de build à la racine du dépôt** (`COPY backend/...`) : connecter le dépôt entier et pointer le chemin du Dockerfile vers **`backend/Dockerfile`**.
 
-> Un Dockerfile est déjà présent pour faciliter le déploiement. Il faudra simplement référencer `backend/` comme "Root Directory" après avoir connecté le repository.
-> La base de donnée postgres peut être créée via Railway dans le même projet que le backend.
+La base PostgreSQL peut être ajoutée dans le même projet Railway que le backend.

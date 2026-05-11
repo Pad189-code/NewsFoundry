@@ -10,4 +10,16 @@ dependencies = [
     "sqlmodel>=0.0.14",
     "psycopg2-binary>=2.9.9",
     "bcrypt>=4.3.0",
+    "httpx>=0.28.1",
+    "pyjwt>=2.8.0",
+    "openai>=2.36.0",
+    "pydantic-ai>=1.93.0",
+    "pydantic-ai-slim[google]>=1.93.0",
+    "slowapi>=0.1.9",
+    "alembic>=1.18.4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
 ]

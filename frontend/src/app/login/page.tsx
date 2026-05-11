@@ -2,12 +2,13 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { loginWithSeedUser } from "@/lib/api";
+import { loginRequest } from "@/lib/api";
 import { isAuthenticated, storeSession } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("test@test.com");
+  const [password, setPassword] = useState("test");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,8 +28,12 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const token = await loginWithSeedUser(email.trim(), "test");
-      storeSession(email.trim(), token);
+      const tokens = await loginRequest(email.trim(), password);
+      storeSession(
+        email.trim(),
+        tokens.accessToken,
+        tokens.refreshToken,
+      );
       router.push("/chats");
     } catch (requestError) {
       const message =
@@ -43,7 +48,7 @@ export default function LoginPage() {
 
   return (
     <div className="bg-login-grid flex min-h-screen items-center justify-center p-6">
-      <main className="h-[336px] w-[448px] rounded-xl border border-slate-200 bg-white px-7 py-8 shadow-lg">
+      <main className="w-full max-w-[448px] rounded-xl border border-slate-200 bg-white px-7 py-8 shadow-lg">
         <h1 className="text-center text-lg font-semibold tracking-wide text-[#803cda]">
           NEWSFOUNDRY
         </h1>
@@ -57,11 +62,23 @@ export default function LoginPage() {
               Adresse email
             </label>
             <input
-              className="w-full rounded-md border border-slate-200 bg-slate-100 px-3 py-2 outline-none ring-0 focus:border-[#803cda]"
+              className="w-full rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-[#898989] outline-none ring-0 focus:border-[#803cda]"
               type="email"
               placeholder="votre.email@exemple.com"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Mot de passe
+            </label>
+            <input
+              className="w-full rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-[#898989] outline-none ring-0 focus:border-[#803cda]"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
               required
             />
           </div>
@@ -75,7 +92,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full rounded-md bg-[#282833] px-4 py-2 text-sm font-medium text-white hover:bg-[#1f1f29] disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-md bg-[#282833] px-4 py-2 text-sm font-medium text-[#898989] hover:bg-[#1f1f29] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isLoading ? "Connexion..." : "Se connecter"}
           </button>
