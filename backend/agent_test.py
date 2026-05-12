@@ -1,9 +1,6 @@
 """Test PydanticAI + Gemini (appel réel).
 
-Exemple historique avec ``GeminiModel('gemini-1.5-flash', api_key=...)`` :
-``api_key`` n'est plus un argument du constructeur, et ``gemini-1.5-flash`` peut
-renvoyer 404 sur l'API ``v1beta``. Ici on utilise ``GoogleModel`` + ``GoogleProvider``
-(``GOOGLE_API_KEY``), comme recommandé par PydanticAI.
+Utilise ``GoogleModel`` + ``GoogleProvider`` (SDK ``google-genai``) et ``GOOGLE_API_KEY``.
 
 Lancement : ``cd backend`` puis ``uv run python agent_test.py``
 """

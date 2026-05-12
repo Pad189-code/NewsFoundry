@@ -1,12 +1,9 @@
 """Construction des modèles PydanticAI pour Gemini (API Google native, pas le mode compat OpenAI).
 
-L’historique ``pydantic_ai.models.gemini.GeminiModel`` + fournisseur GLA utilisait un client HTTP
-dont la base URL pointait vers ``…/v1beta/models/``. La voie supportée par PydanticAI est désormais
-``GoogleModel`` + ``GoogleProvider`` (SDK ``google-genai``), sans ``base_url`` imposée : le SDK
-choisit l’endpoint stable.
+``GoogleModel`` + ``GoogleProvider`` s’appuient sur le SDK ``google-genai`` (paquet ``google-genai``).
+Aucune ``base_url`` n’est passée ici : le client officiel gère les endpoints.
 
-Pour les appels de code qui demandent encore le symbole ``GeminiModel``, on l’expose comme alias
-de ``GoogleModel`` (même intégration native Gemini, pas une couche OpenAI).
+Le symbole ``GeminiModel`` est un alias de ``GoogleModel`` pour garder un nom familier côté appel.
 """
 
 from __future__ import annotations
