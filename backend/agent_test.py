@@ -26,8 +26,8 @@ if not api_key:
     print("Clé manquante : définissez GOOGLE_API_KEY dans backend/.env.", file=sys.stderr)
     sys.exit(1)
 
-# Même famille que OPENAI_MODEL=google-gla:gemini-2.0-flash dans l'app
-model_name = (os.getenv("GEMINI_TEST_MODEL") or "gemini-2.0-flash").strip()
+# Aligné sur la prod : gemini-1.5-flash (stable). Surcharge possible via GEMINI_TEST_MODEL.
+model_name = (os.getenv("GEMINI_TEST_MODEL") or "gemini-1.5-flash").strip()
 model = GoogleModel(model_name, provider=GoogleProvider(api_key=api_key))
 
 agent = Agent(model=model, system_prompt="Tu es un assistant sarcastique mais utile.")

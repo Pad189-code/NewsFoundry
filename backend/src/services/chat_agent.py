@@ -9,6 +9,8 @@ from pydantic_ai import Agent, RunContext
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 from pydantic_ai.models import Model
 
+from services.llm import build_native_gemini_model
+from services.llm_model_spec import effective_chat_model_spec, resolve_chat_model_env_string
 from services.news import format_news_tool_result
 
 logger = logging.getLogger(__name__)
@@ -35,12 +37,22 @@ def _format_llm_exception(exc: BaseException, *, max_body: int = 1200) -> str:
         return f"{exc.__class__.__name__} ({exc.model_name}): {exc.message}"
     return f"{exc.__class__.__name__}: {exc}"
 
+def _string_model_spec(model: str | Model | None) -> str | None:
+    """Spec ``fournisseur:modèle`` pour les contrôles de clé ; ``None`` si instance ``Model``."""
+    if isinstance(model, Model):
+        return None
+    if isinstance(model, str):
+        return effective_chat_model_spec(model)
+    return resolve_chat_model_env_string()
+
+
 def _credentials_ready(model: str | Model | None) -> bool:
     """OpenAI (openai:…) vs Google Gemini (google-gla:… / google-vertex:…)."""
     if isinstance(model, Model):
         return True
-    spec = model if isinstance(model, str) else os.getenv("OPENAI_MODEL", "openai:gpt-4o-mini")
-    sl = str(spec).lower()
+    spec = _string_model_spec(model)
+    assert spec is not None
+    sl = spec.lower()
     if sl.startswith("google-gla:") or sl.startswith("google-vertex:"):
         return bool(os.getenv("GOOGLE_API_KEY", "").strip())
     return bool(os.getenv("OPENAI_API_KEY", "").strip())
@@ -49,8 +61,9 @@ def _credentials_ready(model: str | Model | None) -> bool:
 def _missing_key_hint(model: str | Model | None) -> str:
     if isinstance(model, Model):
         return "OPENAI_API_KEY ou GOOGLE_API_KEY"
-    spec = model if isinstance(model, str) else os.getenv("OPENAI_MODEL", "openai:gpt-4o-mini")
-    sl = str(spec).lower()
+    spec = _string_model_spec(model)
+    assert spec is not None
+    sl = spec.lower()
     if sl.startswith("google-gla:") or sl.startswith("google-vertex:"):
         return "GOOGLE_API_KEY (Google AI Studio / Vertex)"
     return "OPENAI_API_KEY"
@@ -72,9 +85,13 @@ def build_chat_agent(
     model: str | Model | None = None,
     system_prompt: str | None = None,
 ) -> Agent[ChatDeps, str]:
-    resolved: str | Model | Any = (
-        model if model is not None else os.getenv("OPENAI_MODEL", "openai:gpt-4o-mini")
-    )
+    resolved: str | Model | Any
+    if isinstance(model, Model):
+        resolved = model
+    elif isinstance(model, str):
+        resolved = build_native_gemini_model(effective_chat_model_spec(model))
+    else:
+        resolved = build_native_gemini_model(resolve_chat_model_env_string())
     sp = system_prompt if system_prompt is not None else SYSTEM_PROMPT_BASE
     agent = Agent(
         resolved,
@@ -117,7 +134,7 @@ async def run_agent_reply(
     if not _credentials_ready(model):
         return (
             f"Impossible d'appeler le modèle d'IA (configurez {_missing_key_hint(model)} pour le modèle "
-            f"défini dans OPENAI_MODEL, puis redémarrez le backend). "
+            f"défini (GEMINI_MODEL ou OPENAI_MODEL), puis redémarrez le backend). "
             "En attendant, voici un extrait du contexte articles disponible:\n\n"
             + articles_context[:1200]
         )
@@ -127,13 +144,28 @@ async def run_agent_reply(
         agent = build_chat_agent(model=model, system_prompt=system_prompt)
         result = await agent.run(full_prompt, deps=deps)
         return str(result.output).strip()
+    except ModelHTTPError as exc:
+        logger.warning("run_agent_reply: erreur HTTP modèle", exc_info=True)
+        if exc.status_code == 429:
+            return "Quota d'IA épuisé, réessayez dans une minute."
+        if exc.status_code == 404:
+            return "Modèle d'IA indisponible (vérifiez la config)."
+        detail = _format_llm_exception(exc)
+        return (
+            "Impossible d'appeler le modèle d'IA (vérifiez "
+            f"{_missing_key_hint(model)} et GEMINI_MODEL / OPENAI_MODEL — chaîne « fournisseur:modèle », "
+            "ex. google-gla:gemini-1.5-flash). "
+            f"Détail technique : {detail}. "
+            "En attendant, voici un extrait du contexte articles disponible:\n\n"
+            + articles_context[:1200]
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("run_agent_reply: échec appel modèle", exc_info=True)
         detail = _format_llm_exception(exc)
         return (
             "Impossible d'appeler le modèle d'IA (vérifiez "
-            f"{_missing_key_hint(model)} et la valeur de OPENAI_MODEL — chaîne « fournisseur:modèle », "
-            "ex. google-gla:gemini-2.0-flash). "
+            f"{_missing_key_hint(model)} et GEMINI_MODEL / OPENAI_MODEL — chaîne « fournisseur:modèle », "
+            "ex. google-gla:gemini-1.5-flash). "
             f"Détail technique : {detail}. "
             "En attendant, voici un extrait du contexte articles disponible:\n\n"
             + articles_context[:1200]

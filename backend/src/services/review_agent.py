@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
+from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.models import Model
+
+from services.llm import build_native_gemini_model
+from services.llm_model_spec import effective_review_model_spec, resolve_review_model_env_string
+
+logger = logging.getLogger(__name__)
 
 
 class ArticleMentionOutput(BaseModel):
@@ -75,27 +82,32 @@ def sanitize_transcript_for_review(transcript: str) -> str:
     return "\n".join(user_only).strip() or transcript.strip()
 
 
-def _review_model_spec() -> str:
-    raw = os.getenv("OPENAI_REVIEW_MODEL", "gpt-4o-mini").strip()
-    if not raw:
-        return "openai:gpt-4o-mini"
-    if ":" in raw:
-        return raw
-    return f"openai:{raw}"
+def _string_review_spec(model: str | Model | None) -> str | None:
+    if isinstance(model, Model):
+        return None
+    if isinstance(model, str):
+        return effective_review_model_spec(model)
+    return resolve_review_model_env_string()
 
 
 def _review_llm_ready(model: str | Model | None) -> bool:
     if isinstance(model, Model):
         return True
-    spec = model if isinstance(model, str) else _review_model_spec()
-    sl = str(spec).lower()
+    spec = _string_review_spec(model)
+    assert spec is not None
+    sl = spec.lower()
     if sl.startswith("google-gla:") or sl.startswith("google-vertex:"):
         return bool(os.getenv("GOOGLE_API_KEY", "").strip())
     return bool(os.getenv("OPENAI_API_KEY", "").strip())
 
 
 def build_press_review_agent(model: str | Model | None = None) -> Agent[None, PressReviewAgentOutput]:
-    resolved = model if model is not None else _review_model_spec()
+    if isinstance(model, Model):
+        resolved: str | Model = model
+    elif isinstance(model, str):
+        resolved = build_native_gemini_model(effective_review_model_spec(model))
+    else:
+        resolved = build_native_gemini_model(resolve_review_model_env_string())
     return Agent(
         resolved,
         output_type=PressReviewAgentOutput,
@@ -133,6 +145,14 @@ def format_review_markdown(out: PressReviewAgentOutput) -> str:
     return "".join(lines)
 
 
+def _quota_or_model_error_output(msg: str) -> PressReviewAgentOutput:
+    return PressReviewAgentOutput(
+        title="Revue de presse — indisponible",
+        general_summary=msg,
+        articles_mentioned=[],
+    )
+
+
 async def run_press_review_structured(
     *,
     topic: str,
@@ -157,6 +177,13 @@ async def run_press_review_structured(
         out = result.output
         if isinstance(out, PressReviewAgentOutput):
             return _polish_review_output(out)
+        return _fallback_output(topic, transcript, articles_rag)
+    except ModelHTTPError as exc:
+        logger.warning("run_press_review_structured: erreur HTTP modèle", exc_info=True)
+        if exc.status_code == 429:
+            return _quota_or_model_error_output("Quota d'IA épuisé, réessayez dans une minute.")
+        if exc.status_code == 404:
+            return _quota_or_model_error_output("Modèle d'IA indisponible (vérifiez la config).")
         return _fallback_output(topic, transcript, articles_rag)
     except Exception:  # noqa: BLE001
         return _fallback_output(topic, transcript, articles_rag)
