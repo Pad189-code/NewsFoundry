@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 
 from pydantic_ai.models.google import GoogleModel
+from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.google import GoogleProvider
 
 from services.llm_model_spec import normalize_provider_model_spec
@@ -24,8 +25,8 @@ def _google_api_key() -> str | None:
     return key or None
 
 
-def build_native_gemini_model(normalized_spec: str) -> str | GoogleModel:
-    """À partir d’une spec déjà normalisée (``google-gla:…``, ``openai:…``), retourne un modèle ou la chaîne OpenAI."""
+def build_native_gemini_model(normalized_spec: str) -> str | GoogleModel | OpenAIModel:
+    """À partir d'une spec déjà normalisée (``google-gla:…``, ``openai:…``), retourne un modèle PydanticAI."""
     spec = normalize_provider_model_spec(normalized_spec)
     low = spec.lower()
     if low.startswith("google-gla:"):
@@ -34,4 +35,8 @@ def build_native_gemini_model(normalized_spec: str) -> str | GoogleModel:
     if low.startswith("google-vertex:"):
         model_id = spec.split(":", 1)[1].strip()
         return GeminiModel(model_id, provider=GoogleProvider(vertexai=True))
+    if low.startswith("openai:"):
+        model_id = spec.split(":", 1)[1].strip()
+        return OpenAIModel(model_id, api_key=os.getenv("OPENAI_API_KEY"))
+    # Fallback for any other provider format
     return spec
