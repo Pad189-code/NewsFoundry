@@ -1,7 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   createChat,
@@ -67,7 +74,7 @@ function formatFrDate(iso: string): string {
   }
 }
 
-export default function ChatsPage() {
+function ChatsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [prompt, setPrompt] = useState("");
@@ -607,5 +614,19 @@ export default function ChatsPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function ChatsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-slate-50">
+          <p className="text-slate-600">Chargement…</p>
+        </div>
+      }
+    >
+      <ChatsPageContent />
+    </Suspense>
   );
 }
