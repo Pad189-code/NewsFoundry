@@ -59,8 +59,18 @@ Par ailleurs, pour faciliter la maintenance du projet à long terme, le code du 
 |--|--|
 | **URL à documenter ici** | `https://____________.vercel.app` *(à remplacer après le premier déploiement — voir ci-dessous)* |
 | **Quand l’URL est disponible** | **Dès que le premier déploiement Vercel a réussi** (quelques minutes après le push ou « Deploy »). Elle apparaît dans le tableau de bord du projet Vercel : **Settings → Domains** ou en tête du dernier déploiement (**Visit**). Par défaut c’est `https://<nom-du-projet>.vercel.app` ; un domaine personnalisé s’affiche une fois configuré. Chaque **preview** de branche a aussi sa propre URL (`*.vercel.app`). |
-| **Variable côté Vercel** | Définir **`NEXT_PUBLIC_API_URL`** sur l’URL HTTPS publique du backend. |
+| **Variable côté Vercel** | Définir **`NEXT_PUBLIC_API_URL`** sur l’URL HTTPS du backend (voir ci‑dessous, section API Railway). |
 | **Variable côté backend** | Ajouter l’URL du frontend dans **`CORS_ORIGINS`** (séparateur virgule si plusieurs origines). |
+
+#### API backend (Railway — production)
+
+| | |
+|--|--|
+| **URL de base** | `https://newsfoundry-api-production.up.railway.app` |
+| **Documentation OpenAPI** | `https://newsfoundry-api-production.up.railway.app/docs` |
+| **Santé** | `GET https://newsfoundry-api-production.up.railway.app/health` → `{"message":"ok","app":"newsfoundry-api"}` |
+
+Pour Vercel : **`NEXT_PUBLIC_API_URL`** = `https://newsfoundry-api-production.up.railway.app` (sans slash final inutile si votre code l’attend ainsi ; le client `api.ts` assemble les chemins).
 
 #### Frontend
 
@@ -72,6 +82,6 @@ Déployer le backend sur [Railway](https://railway.com/dashboard). Le fichier **
 
 **Variables du service API :** référencer **`DATABASE_URL`** depuis le plugin Postgres ; **`JWT_SECRET`** (valeur prod dédiée) ; **`GOOGLE_API_KEY`**, **`OPENAI_MODEL`**, **`WORLDNEWS_API_KEY`**, etc. ; **`CORS_ORIGINS`** (URL Vercel une fois connue). Ne pas activer **`SEED_DEFAULT_USER`** en production.
 
-Après déploiement : **`GET https://<domaine-railway>/health`** doit renvoyer `{"message":"ok","app":"newsfoundry-api"}`.
+Après déploiement : **`GET https://newsfoundry-api-production.up.railway.app/health`** doit renvoyer `{"message":"ok","app":"newsfoundry-api"}` (voir aussi la section **API backend** ci‑dessus).
 
 La base PostgreSQL peut être ajoutée dans le même projet Railway que le backend.
