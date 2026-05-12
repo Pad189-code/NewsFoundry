@@ -1,0 +1,9 @@
+# Railway — backend NewsFoundry (Docker).
+# Contexte de build = racine du dépôt (COPY backend/... dans backend/Dockerfile).
+# Dashboard : ne pas mettre Root Directory = backend/ pour ce service.
+# Secours si besoin : variable RAILWAY_DOCKERFILE_PATH = backend/Dockerfile
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "backend/Dockerfile"
+watchPatterns = ["backend/**"]

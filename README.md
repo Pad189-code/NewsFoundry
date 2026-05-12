@@ -68,6 +68,10 @@ Déployer le frontend sur [Vercel](https://vercel.com/dashboard). Dans un monore
 
 #### Backend
 
-Déployer le backend sur [Railway](https://railway.com/dashboard). Le `Dockerfile` sous `backend/` suppose un **contexte de build à la racine du dépôt** (`COPY backend/...`) : connecter le dépôt entier et pointer le chemin du Dockerfile vers **`backend/Dockerfile`**.
+Déployer le backend sur [Railway](https://railway.com/dashboard). Le fichier **`railway.toml`** à la racine du dépôt fixe le builder Docker et **`dockerfilePath = backend/Dockerfile`** (contexte = racine du monorepo). Pour ce service, **ne pas** régler le **Root Directory** sur `backend/`. En secours : variable **`RAILWAY_DOCKERFILE_PATH`** = `backend/Dockerfile`.
+
+**Variables du service API :** référencer **`DATABASE_URL`** depuis le plugin Postgres ; **`JWT_SECRET`** (valeur prod dédiée) ; **`GOOGLE_API_KEY`**, **`OPENAI_MODEL`**, **`WORLDNEWS_API_KEY`**, etc. ; **`CORS_ORIGINS`** (URL Vercel une fois connue). Ne pas activer **`SEED_DEFAULT_USER`** en production.
+
+Après déploiement : **`GET https://<domaine-railway>/health`** doit renvoyer `{"message":"ok","app":"newsfoundry-api"}`.
 
 La base PostgreSQL peut être ajoutée dans le même projet Railway que le backend.
