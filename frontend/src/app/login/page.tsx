@@ -56,12 +56,21 @@ export default function LoginPage() {
           Connectez-vous pour acceder a votre assistant d&apos;actualites IA
         </p>
 
-        <form className="mt-5 space-y-4" onSubmit={onSubmit}>
+        <form className="mt-5 space-y-4" onSubmit={onSubmit} noValidate>
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
+            <label
+              htmlFor="login-email"
+              className="mb-1 block text-sm font-medium text-slate-700"
+            >
               Adresse email
             </label>
             <input
+              id="login-email"
+              name="email"
+              autoComplete="email"
+              enterKeyHint="next"
+              aria-invalid={error ? true : undefined}
+              aria-describedby={error ? "login-error" : undefined}
               className="w-full rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-[#898989] outline-none ring-0 focus:border-[#803cda]"
               type="email"
               placeholder="votre.email@exemple.com"
@@ -71,10 +80,19 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
+            <label
+              htmlFor="login-password"
+              className="mb-1 block text-sm font-medium text-slate-700"
+            >
               Mot de passe
             </label>
             <input
+              id="login-password"
+              name="password"
+              autoComplete="current-password"
+              enterKeyHint="done"
+              aria-invalid={error ? true : undefined}
+              aria-describedby={error ? "login-error" : undefined}
               className="w-full rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-[#898989] outline-none ring-0 focus:border-[#803cda]"
               type="password"
               value={password}
@@ -84,7 +102,12 @@ export default function LoginPage() {
           </div>
 
           {error ? (
-            <p className="rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-700">
+            <p
+              id="login-error"
+              role="alert"
+              aria-live="polite"
+              className="rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-700"
+            >
               {error}
             </p>
           ) : null}
@@ -92,6 +115,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={isLoading}
+            aria-busy={isLoading}
             className="w-full rounded-md bg-[#282833] px-4 py-2 text-sm font-medium text-[#898989] hover:bg-[#1f1f29] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isLoading ? "Connexion..." : "Se connecter"}

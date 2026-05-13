@@ -58,7 +58,7 @@ async def root():
 
 @app.get("/health")
 async def health():
-    # Champ « app » : évite qu’un ancien processus sur :8000 (sans /auth/login) fasse croire que l’API est à jour.
+    # Champ « app » : évite qu’un ancien processus sur :8000 (sans /login) fasse croire que l’API est à jour.
     return {"message": "ok", "app": "newsfoundry-api"}
 
 

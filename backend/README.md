@@ -19,7 +19,9 @@ docker run \
   postgres:17
 ```
 
-3. **Migrations Alembic (PostgreSQL, anciennes tables `conversation` / `message`)**
+3. **Sans PostgreSQL** (erreur *connection refused* sur le port 5432) : dans `.env`, ajoutez `TEST_SQLITE=1` pour utiliser **SQLite en mémoire** (données perdues à l’arrêt du serveur). `DATABASE_URL` est alors ignoré. Utile pour tester rapidement l’API sur **:8000** sans Docker.
+
+4. **Migrations Alembic (PostgreSQL, anciennes tables `conversation` / `message`)**
 
 Si vous mettez à jour une base qui contenait encore l’ancien schéma (discussions en lignes séparées), **sauvegardez** la base (`pg_dump`), puis :
 
@@ -31,7 +33,7 @@ uv run --env-file .env alembic upgrade head
 
 La révision `20260211_legacy_to_chat` : crée `chat`, copie chaque ligne `conversation` avec l’historique agrégé en `messages_json`, renomme les FK `article` / `pressreview` en `chat_id`, supprime `message` et `conversation`. Elle **ne s’exécute pas** sur SQLite et ne fait **rien** si `conversation` est déjà absente (schéma actuel).
 
-4. Lancer le backend:
+5. Lancer le backend:
 ```bash
 uv run --env-file .env src/main.py
 ```

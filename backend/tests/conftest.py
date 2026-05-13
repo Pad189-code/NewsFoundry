@@ -42,7 +42,7 @@ def other_user_token(client: TestClient) -> str:
         session.commit()
 
     login = client.post(
-        "/auth/login",
+        "/login",
         json={"email": "other@test.com", "password": "other-secret"},
     )
     assert login.status_code == 200

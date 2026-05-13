@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func
 from models import Article, Chat, PressReview, User
 from sqlmodel import Session, desc, select
@@ -114,6 +114,7 @@ def _messages_as_text(messages: list[dict], limit: int = 30) -> str:
 
 
 @limiter.limit("10/minute")
+@router.post("/login", response_model=TokenResponse)
 @router.post("/auth/login", response_model=TokenResponse)
 def login(
     request: Request,
@@ -237,6 +238,23 @@ async def create_chat(
     await _ensure_chat_system_prompt_saved(session, chat)
     session.refresh(chat)
     return chat
+
+
+@router.delete("/chats/{chat_id}")
+def delete_chat(
+    chat_id: int,
+    session: Session = Depends(get_session),
+    current: User = Depends(get_current_user),
+) -> Response:
+    """Supprime la discussion et les enregistrements liés (articles, revues de presse)."""
+    chat = _chat_or_404(session, current.id, chat_id)
+    for review in session.exec(select(PressReview).where(PressReview.chat_id == chat_id)).all():
+        session.delete(review)
+    for art in session.exec(select(Article).where(Article.chat_id == chat_id)).all():
+        session.delete(art)
+    session.delete(chat)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/chats/{chat_id}", response_model=ChatDetailPublic)

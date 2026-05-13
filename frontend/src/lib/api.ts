@@ -179,7 +179,7 @@ export async function pingBackend(): Promise<BackendHello> {
   if (body.message !== "ok" || body.app !== "newsfoundry-api") {
     throw new Error(
       `Sur ${API_BASE_URL}, /health ne correspond pas au backend NewsFoundry actuel (réponse : ${JSON.stringify(data)}). ` +
-        `Cause fréquente : un ancien processus utilise encore le port (il expose /health mais pas /auth/login → 404 à la connexion). ` +
+        `Cause fréquente : un ancien processus utilise encore le port (il expose /health mais pas /login → 404 à la connexion). ` +
         `Sous Windows : netstat -ano | findstr :8000 puis taskkill /PID <pid> /F. Ensuite : cd backend puis uv run --env-file .env src/main.py.`,
     );
   }
@@ -192,7 +192,7 @@ export async function loginRequest(
   password: string,
 ): Promise<LoginTokens> {
   await pingBackend();
-  const response = await networkFetch(`${API_BASE_URL}/auth/login`, {
+  const response = await networkFetch(`${API_BASE_URL}/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -211,7 +211,7 @@ export async function loginRequest(
     }
     if (response.status === 404) {
       throw new Error(
-        `Route introuvable (404) sur ${API_BASE_URL}/auth/login — ` +
+        `Route introuvable (404) sur ${API_BASE_URL}/login — ` +
           `soit le backend NewsFoundry n’est pas à jour / pas démarré, soit NEXT_PUBLIC_API_URL pointe vers le mauvais serveur. ` +
           `Détail : ${detail}`,
       );
@@ -250,6 +250,18 @@ export async function createChat(title?: string): Promise<ChatDTO> {
     throw new Error(await parseApiError(response));
   }
   return (await response.json()) as ChatDTO;
+}
+
+export async function deleteChat(chatId: number): Promise<void> {
+  const response = await withAuthRetry((access) =>
+    fetch(`${API_BASE_URL}/chats/${chatId}`, {
+      method: "DELETE",
+      headers: authHeaders(access),
+    }),
+  );
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
 }
 
 export async function listMessages(chatId: number): Promise<MessageDTO[]> {

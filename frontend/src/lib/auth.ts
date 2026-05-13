@@ -1,3 +1,4 @@
+/** Clé localStorage du JWT d’accès (Bearer) après connexion via ``POST /login``. */
 export const AUTH_TOKEN_KEY = "newsfoundry_token";
 export const AUTH_REFRESH_KEY = "newsfoundry_refresh";
 export const AUTH_EMAIL_KEY = "newsfoundry_email";

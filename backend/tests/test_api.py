@@ -21,15 +21,25 @@ def test_health(client: TestClient) -> None:
 
 def test_login_invalid(client: TestClient) -> None:
     response = client.post(
-        "/auth/login",
+        "/login",
         json={"email": "nope@nope.com", "password": "wrong"},
     )
     assert response.status_code == 401
 
 
+def test_login_legacy_auth_alias(client: TestClient) -> None:
+    """``/auth/login`` reste un alias de ``/login`` pour compatibilité."""
+    response = client.post(
+        "/auth/login",
+        json={"email": "test@test.com", "password": "test"},
+    )
+    assert response.status_code == 200
+    assert "access_token" in response.json()
+
+
 def test_login_and_refresh(client: TestClient) -> None:
     login = client.post(
-        "/auth/login",
+        "/login",
         json={"email": "test@test.com", "password": "test"},
     )
     assert login.status_code == 200
@@ -61,7 +71,7 @@ def test_login_and_refresh(client: TestClient) -> None:
 
 def test_chats_flow(client: TestClient) -> None:
     login = client.post(
-        "/auth/login",
+        "/login",
         json={"email": "test@test.com", "password": "test"},
     )
     token = login.json()["access_token"]
@@ -93,6 +103,11 @@ def test_chats_flow(client: TestClient) -> None:
     no_auth = client.get(f"/chats/{cid}")
     assert no_auth.status_code == 403
 
+    deleted = client.delete(f"/chats/{cid}", headers=headers)
+    assert deleted.status_code == 204
+    assert client.get(f"/chats/{cid}", headers=headers).status_code == 404
+    assert client.get("/chats", headers=headers).json() == []
+
 
 def test_chat_message_returns_assistant_reply(
     monkeypatch: pytest.MonkeyPatch,
@@ -122,7 +137,7 @@ def test_chat_message_returns_assistant_reply(
     monkeypatch.setattr(routes_module, "run_agent_reply", fake_run)
 
     login = client.post(
-        "/auth/login",
+        "/login",
         json={"email": "test@test.com", "password": "test"},
     )
     token = login.json()["access_token"]
@@ -193,7 +208,7 @@ def test_press_review_structured_persisted_and_list_all_reviews(
     monkeypatch.setattr(routes_module, "run_press_review_structured", fake_structured)
 
     login = client.post(
-        "/auth/login",
+        "/login",
         json={"email": "test@test.com", "password": "test"},
     )
     assert login.status_code == 200
@@ -246,7 +261,7 @@ def test_create_chat_persists_system_prompt_with_top_news(
     monkeypatch.setenv("WORLDNEWS_API_KEY", "dummy-key")
 
     login = client.post(
-        "/auth/login",
+        "/login",
         json={"email": "test@test.com", "password": "test"},
     )
     assert login.status_code == 200
@@ -272,7 +287,7 @@ def test_user_cannot_access_other_users_chat(
     other_user_token: str,
 ) -> None:
     login = client.post(
-        "/auth/login",
+        "/login",
         json={"email": "test@test.com", "password": "test"},
     )
     token_a = login.json()["access_token"]
