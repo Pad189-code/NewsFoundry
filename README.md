@@ -44,23 +44,30 @@
 
 ### Documentation
 
-Une documentation claire devra être rédigée et ajoutée dans un dossier `docs/`.
+Le dossier **`docs/`** centralise la documentation de livraison :
 
-Elle devra inclure des suggestions d'amélioration concernant la qualité et la performance de la partie IA du système. Chaque recommandation doit être illustrée par une une métrique ou un exemple, une proposition d’implémentation réalisable, ainsi qu'un objectif mesurable.
+- **`docs/ARCHITECTURE_ET_CHOIX_TECHNIQUES.md`** — architecture du dépôt, arborescence des dossiers, commandes pour lancer les tests, choix techniques et raisons.
+- **`docs/EVOLUTIONS_IA.md`** — pistes d’amélioration qualité / performance de la partie IA (métriques, implémentations possibles, objectifs mesurables).
+- **`docs/REGARD_CRITIQUE_PERFORMANCE.md`** — regard critique sur la fluidité et la qualité des résultats (streaming, MLflow, temps de revue, pistes réalisables).
+- **`docs/API_ERREURS.md`** — référence des erreurs HTTP / `detail` renvoyés par l’API.
+- **`docs/PROMPTS.md`** — justification des choix de prompts (chat, revue, RAG).
+- **`docs/GRILLE_LIVRABLES.md`** — tableau de correspondance entre critères de livrables et fichiers du dépôt.
+- **`docs/DEPLOIEMENT.md`** — production Railway + Vercel, déploiement automatique sur `main`, variables.
 
-
-Par ailleurs, pour faciliter la maintenance du projet à long terme, le code du projet devra être clair et bien structuré, accompagné de commentaires qui expliquent les sections de code complexes.
+Pour Postgres, Alembic et variables d’environnement du backend, voir **`backend/README.md`**.
 
 ### Déploiement
 
-#### URL du frontend (production)
+En production, le **backend** et la **base PostgreSQL** sont hébergés sur **Railway**, le **frontend** sur **Vercel**. Les deux plateformes peuvent être reliées au dépôt Git : un **push sur la branche `main`** déclenche un **nouveau déploiement** (build + mise en ligne). Détail et checklist : **`docs/DEPLOIEMENT.md`**.
+
+#### URL du frontend (production — Vercel)
 
 | | |
-|--|--|
-| **URL à documenter ici** | `https://____________.vercel.app` *(à remplacer après le premier déploiement — voir ci-dessous)* |
-| **Quand l’URL est disponible** | **Dès que le premier déploiement Vercel a réussi** (quelques minutes après le push ou « Deploy »). Elle apparaît dans le tableau de bord du projet Vercel : **Settings → Domains** ou en tête du dernier déploiement (**Visit**). Par défaut c’est `https://<nom-du-projet>.vercel.app` ; un domaine personnalisé s’affiche une fois configuré. Chaque **preview** de branche a aussi sa propre URL (`*.vercel.app`). |
-| **Variable côté Vercel** | Définir **`NEXT_PUBLIC_API_URL`** sur l’URL HTTPS du backend (voir ci‑dessous, section API Railway). |
-| **Variable côté backend** | Ajouter l’URL du frontend dans **`CORS_ORIGINS`** (séparateur virgule si plusieurs origines). |
+|--|--|https://news-foundry-nvpt-git-main-pad189-codes-projects.vercel.app/
+| **URL du déploiement** | *Renseigner ici l’URL affichée dans le dashboard Vercel (ex. `https://<votre-projet>.vercel.app` ou domaine personnalisé).* |
+| **Où la trouver** | Tableau de bord Vercel : dernier déploiement **Production** → **Visit**, ou **Settings → Domains**. |
+| **Variable côté Vercel** | **`NEXT_PUBLIC_API_URL`** = URL HTTPS du backend Railway (voir ci‑dessous). |
+| **Variable côté backend Railway** | **`CORS_ORIGINS`** doit contenir l’origine exacte du frontend (URL Vercel). |
 
 #### API backend (Railway — production)
 
@@ -70,18 +77,18 @@ Par ailleurs, pour faciliter la maintenance du projet à long terme, le code du 
 | **Documentation OpenAPI** | `https://newsfoundry-api-production.up.railway.app/docs` |
 | **Santé** | `GET https://newsfoundry-api-production.up.railway.app/health` → `{"message":"ok","app":"newsfoundry-api"}` |
 
-Pour Vercel : **`NEXT_PUBLIC_API_URL`** = `https://newsfoundry-api-production.up.railway.app` (sans slash final inutile si votre code l’attend ainsi ; le client `api.ts` assemble les chemins).
+Exemple pour la variable Vercel : **`NEXT_PUBLIC_API_URL`** = `https://newsfoundry-api-production.up.railway.app` (le client `frontend/src/lib/api.ts` assemble les chemins ; pas de slash final inutile).
 
-#### Frontend
+#### Frontend (Vercel)
 
-Déployer le frontend sur [Vercel](https://vercel.com/dashboard). Dans un monorepo, régler le **Root Directory** du projet Vercel sur **`frontend`**.
+Projet lié au dépôt Git ; **branche de production** : **`main`** ; **Root Directory** : **`frontend`**. Chaque push sur `main` déclenche un déploiement production.
 
-#### Backend
+#### Backend + base (Railway)
 
-Déployer le backend sur [Railway](https://railway.com/dashboard). Le fichier **`railway.toml`** à la racine du dépôt fixe le builder Docker et **`dockerfilePath = backend/Dockerfile`** (contexte = racine du monorepo). Pour ce service, **ne pas** régler le **Root Directory** sur `backend/`. En secours : variable **`RAILWAY_DOCKERFILE_PATH`** = `backend/Dockerfile`.
+Service API sur [Railway](https://railway.com/dashboard) : **`railway.toml`** à la racine fixe le Docker **`backend/Dockerfile`** (contexte = racine du monorepo — **ne pas** mettre le Root Directory Railway sur `backend/` seul). Variable de secours possible : **`RAILWAY_DOCKERFILE_PATH`** = `backend/Dockerfile`.
 
-**Variables du service API :** référencer **`DATABASE_URL`** depuis le plugin Postgres ; **`JWT_SECRET`** (valeur prod dédiée) ; **`GOOGLE_API_KEY`**, **`OPENAI_MODEL`**, **`WORLDNEWS_API_KEY`**, etc. ; **`CORS_ORIGINS`** (URL Vercel une fois connue). Ne pas activer **`SEED_DEFAULT_USER`** en production.
+**PostgreSQL** : ajouté dans le **même projet** Railway ; **`DATABASE_URL`** référencée par le service API.
 
-Après déploiement : **`GET https://newsfoundry-api-production.up.railway.app/health`** doit renvoyer `{"message":"ok","app":"newsfoundry-api"}` (voir aussi la section **API backend** ci‑dessus).
+**Variables du service API :** **`DATABASE_URL`** ; **`JWT_SECRET`** ; clés **`GOOGLE_API_KEY`**, **`OPENAI_MODEL`**, **`WORLDNEWS_API_KEY`**, etc. ; **`CORS_ORIGINS`** = URL du frontend Vercel. Ne pas activer **`SEED_DEFAULT_USER`** en production.
 
-La base PostgreSQL peut être ajoutée dans le même projet Railway que le backend.
+Après déploiement : **`GET https://newsfoundry-api-production.up.railway.app/health`** → `{"message":"ok","app":"newsfoundry-api"}`.

@@ -39,7 +39,7 @@ from services.news import (
     worldnews_api_key,
 )
 from services.review_agent import format_review_markdown, run_press_review_structured
-from services.review_llm import format_articles_rag_for_prompt
+from services.review_rag import retrieve_review_context
 
 router = APIRouter()
 
@@ -321,6 +321,7 @@ async def append_message(
         history_text=history,
         articles_context=articles_block,
         worldnews_api_key=worldnews_api_key(),
+        chat_id=chat_id,
         system_prompt=chat.system_prompt_saved,
     )
 
@@ -381,6 +382,13 @@ async def fetch_news_for_chat(
         session.add(art)
         created.append(art)
         existing_urls.add(url)
+
+    url_loaded = list(chat.loaded_articles or [])
+    for art in created:
+        u = (art.url or "").strip()
+        if u and u not in url_loaded:
+            url_loaded.append(u)
+    chat.loaded_articles = url_loaded
 
     chat.updated_at = datetime.now(timezone.utc)
     session.add(chat)
@@ -465,7 +473,9 @@ async def create_review(
 
     articles_tuples = [(a.title, a.summary or "", a.url) for a in articles_rows]
     articles_rag = (
-        format_articles_rag_for_prompt(articles_tuples) if articles_tuples else ""
+        retrieve_review_context(payload.topic.strip(), articles_tuples)
+        if articles_tuples
+        else ""
     )
 
     structured = await run_press_review_structured(

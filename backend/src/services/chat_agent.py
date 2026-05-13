@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from dataclasses import dataclass
@@ -11,7 +12,8 @@ from pydantic_ai.models import Model
 
 from services.llm import build_native_gemini_model
 from services.llm_model_spec import effective_chat_model_spec, resolve_chat_model_env_string
-from services.news import format_news_tool_result
+from services.article_tool_persist import persist_fetched_articles_for_chat
+from services.news import search_news_for_chat_tool
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +81,8 @@ pour répondre aux questions sur l'actualité du jour lorsque c'est pertinent.""
 @dataclass
 class ChatDeps:
     worldnews_api_key: str
+    # Si défini, persistance des résultats outil → Article + chat.loaded_articles
+    chat_id: int | None = None
 
 
 def build_chat_agent(
@@ -108,7 +112,11 @@ def build_chat_agent(
                 "La clé WorldNewsAPI n'est pas configurée sur le serveur. "
                 "Demandez à l'administrateur d'ajouter WORLDNEWS_API_KEY."
             )
-        return await format_news_tool_result(key, sujet)
+        text, items = await search_news_for_chat_tool(key, sujet)
+        cid = ctx.deps.chat_id
+        if cid is not None and items:
+            await asyncio.to_thread(persist_fetched_articles_for_chat, cid, items)
+        return text
 
     return agent
 
@@ -119,10 +127,11 @@ async def run_agent_reply(
     history_text: str,
     articles_context: str,
     worldnews_api_key: str,
+    chat_id: int | None = None,
     model: str | Model | None = None,
     system_prompt: str | None = None,
 ) -> str:
-    deps = ChatDeps(worldnews_api_key=worldnews_api_key)
+    deps = ChatDeps(worldnews_api_key=worldnews_api_key, chat_id=chat_id)
     prompt_parts = []
     if articles_context.strip():
         prompt_parts.append("Articles déjà chargés pour cette discussion:\n" + articles_context.strip())

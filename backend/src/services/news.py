@@ -132,13 +132,30 @@ def worldnews_api_key() -> str:
     return os.getenv("WORLDNEWS_API_KEY", "").strip()
 
 
-async def format_news_tool_result(api_key: str, sujet: str) -> str:
-    articles = await fetch_worldnews_articles(api_key=api_key, text=sujet, number=8)
-    if not articles:
-        return "Aucun article trouvé pour ce sujet (ou clé API absente / erreur réseau)."
+def _format_news_tool_lines(articles: list[dict[str, Any]]) -> str:
     lines = []
     for a in articles:
         lines.append(
-            f"- {a['title']}\n  Source: {a.get('source') or 'n/a'}\n  {str(a.get('summary') or '')[:400]}\n  URL: {a.get('url')}"
+            f"- {a['title']}\n  Source: {a.get('source') or 'n/a'}\n"
+            f"  {str(a.get('summary') or '')[:400]}\n  URL: {a.get('url')}"
         )
     return "\n".join(lines)
+
+
+async def search_news_for_chat_tool(
+    api_key: str,
+    sujet: str,
+) -> tuple[str, list[dict[str, Any]]]:
+    """Une requête search-news : texte pour le LLM + liste normalisée pour la persistance."""
+    articles = await fetch_worldnews_articles(api_key=api_key, text=sujet, number=8)
+    if not articles:
+        return (
+            "Aucun article trouvé pour ce sujet (ou clé API absente / erreur réseau).",
+            [],
+        )
+    return _format_news_tool_lines(articles), articles
+
+
+async def format_news_tool_result(api_key: str, sujet: str) -> str:
+    text, _articles = await search_news_for_chat_tool(api_key, sujet)
+    return text

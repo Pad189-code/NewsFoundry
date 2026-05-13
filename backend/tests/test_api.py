@@ -121,6 +121,7 @@ def test_chat_message_returns_assistant_reply(
         history_text: str,
         articles_context: str,
         worldnews_api_key: str,
+        chat_id: int | None = None,
         model: object = None,
         system_prompt: str | None = None,
     ) -> str:
@@ -129,6 +130,7 @@ def test_chat_message_returns_assistant_reply(
             history_text,
             articles_context,
             worldnews_api_key,
+            chat_id,
             model,
             system_prompt,
         )
@@ -175,6 +177,7 @@ def test_press_review_structured_persisted_and_list_all_reviews(
         history_text: str,
         articles_context: str,
         worldnews_api_key: str,
+        chat_id: int | None = None,
         model: object = None,
         system_prompt: str | None = None,
     ) -> str:
@@ -183,6 +186,7 @@ def test_press_review_structured_persisted_and_list_all_reviews(
             history_text,
             articles_context,
             worldnews_api_key,
+            chat_id,
             model,
             system_prompt,
         )
@@ -280,6 +284,24 @@ def test_create_chat_persists_system_prompt_with_top_news(
         assert "top-news" in chat.system_prompt_saved.lower() or "WorldNewsAPI" in (
             chat.system_prompt_saved or ""
         )
+
+
+def test_proprietaire_acces_chat_nominal(client: TestClient) -> None:
+    """Cas nominal : le propriétaire lit sa discussion (autorisation OK)."""
+    login = client.post(
+        "/login",
+        json={"email": "test@test.com", "password": "test"},
+    )
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    cid = client.post("/chats", headers=headers, json={"title": "Ma discussion"}).json()[
+        "id"
+    ]
+    detail = client.get(f"/chats/{cid}", headers=headers)
+    assert detail.status_code == 200
+    body = detail.json()
+    assert body["id"] == cid
+    assert body["messages"] == []
 
 
 def test_user_cannot_access_other_users_chat(

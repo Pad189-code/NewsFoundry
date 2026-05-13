@@ -25,6 +25,7 @@ import {
   type MessageDTO,
   type PressReviewDTO,
 } from "@/lib/api";
+import { ChatMarkdown } from "@/components/ChatMarkdown";
 import { clearSession, getStoredEmail, isAuthenticated } from "@/lib/auth";
 
 type ViewMode = "home" | "chat" | "review";
@@ -474,6 +475,19 @@ function ChatsPageContent() {
                     Revue de presse
                   </button>
                 </div>
+                {busy ? (
+                  <div
+                    className="flex items-center gap-2 text-xs font-medium text-[#803cda]"
+                    aria-live="polite"
+                    aria-busy="true"
+                  >
+                    <span
+                      className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#803cda] border-t-transparent"
+                      aria-hidden
+                    />
+                    Traitement en cours…
+                  </div>
+                ) : null}
                 {error ? (
                   <p className="text-xs text-red-600">{error}</p>
                 ) : null}
@@ -524,9 +538,9 @@ function ChatsPageContent() {
                     ) : (
                       <div
                         key={m.id}
-                        className="max-w-[560px] rounded-md bg-white p-4 text-sm text-slate-700 whitespace-pre-wrap"
+                        className="max-w-[560px] rounded-md bg-white p-4 text-sm text-slate-700"
                       >
-                        {m.content}
+                        <ChatMarkdown content={m.content} />
                       </div>
                     ),
                   )}

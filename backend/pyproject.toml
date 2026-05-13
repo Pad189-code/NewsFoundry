@@ -17,6 +17,8 @@ dependencies = [
     "google-genai>=0.3.0",
     "slowapi>=0.1.9",
     "alembic>=1.18.4",
+    "llama-index-core>=0.12.0",
+    "llama-index-embeddings-openai>=0.3.0",
 ]
 
 [dependency-groups]

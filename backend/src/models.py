@@ -35,6 +35,11 @@ class Chat(SQLModel, table=True):
     review_display_title: Optional[str] = None
     review_general_summary: Optional[str] = Field(default=None, sa_column=Column(Text))
     review_articles_json: Optional[list[Any]] = Field(default=None, sa_column=Column(JSON))
+    # URLs d’articles récupérés (outil chat ou news/fetch), pour traçabilité et RAG.
+    loaded_articles: list[str] = Field(
+        default_factory=list,
+        sa_column=Column(JSON),
+    )
 
 
 class Article(SQLModel, table=True):
