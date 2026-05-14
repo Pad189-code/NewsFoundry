@@ -22,6 +22,14 @@ cors_allow_origins = list(
     dict.fromkeys([*default_origins, *configured_origins]),
 )
 
+# 1/true = autorise toutes les origines (tests ou dépannage). allow_credentials=False est obligatoire
+# avec allow_origins=["*"] (sinon le navigateur ignore la réponse CORS).
+_cors_relaxed = os.getenv("CORS_RELAXED", "").strip().lower() in ("1", "true", "yes")
+# Remplace la regex par défaut si besoin (ex. domaine Vercel custom : https://monapp\.com|https://www\.monapp\.com).
+_cors_origin_regex = os.getenv("CORS_ORIGIN_REGEX", "").strip()
+_default_origin_regex = r"https://.*\.vercel\.app|http://[\w.-]+:\d+"
+cors_origin_regex = _cors_origin_regex or _default_origin_regex
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -43,14 +51,23 @@ async def security_headers_middleware(request: Request, call_next):
     return response
 
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_allow_origins,
-    allow_origin_regex=r"https://.*\.vercel\.app|http://[\w.-]+:3000",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if _cors_relaxed:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_allow_origins,
+        allow_origin_regex=cors_origin_regex,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 app.include_router(router)
 
