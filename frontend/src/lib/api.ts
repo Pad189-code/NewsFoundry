@@ -85,8 +85,14 @@ async function networkFetch(
 }
 
 async function parseApiError(response: Response): Promise<string> {
+  // Lire le corps une seule fois : après un ``json()`` échoué, ``text()`` lève « Body has already been consumed ».
+  const raw = await response.text();
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return `HTTP ${response.status} (réponse vide).`;
+  }
   try {
-    const data: unknown = await response.json();
+    const data: unknown = JSON.parse(trimmed);
     if (data && typeof data === "object" && "detail" in data) {
       const detail = (data as { detail: unknown }).detail;
       if (typeof detail === "string") {
@@ -104,7 +110,7 @@ async function parseApiError(response: Response): Promise<string> {
     }
     return JSON.stringify(data);
   } catch {
-    return await response.text();
+    return trimmed.length > 800 ? `${trimmed.slice(0, 800)}…` : trimmed;
   }
 }
 
