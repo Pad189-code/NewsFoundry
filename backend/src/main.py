@@ -84,8 +84,10 @@ async def health():
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", "8000"))
+    # Railway (et autres PaaS) injectent PORT ; en local, backend/.env ou défaut 8000.
+    port = int(os.environ.get("PORT", "8000"))
     try:
+        # 0.0.0.0 : obligatoire derrière un reverse proxy / conteneur (pas 127.0.0.1).
         uvicorn.run(app, host="0.0.0.0", port=port)
     except OSError as exc:
         addr_in_use = exc.errno == errno.EADDRINUSE or getattr(exc, "winerror", None) == 10048
