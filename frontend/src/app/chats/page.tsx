@@ -94,6 +94,7 @@ function ChatsPageContent() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const autoNewsAttempted = useRef<Set<number>>(new Set());
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const authState = useSyncExternalStore(
     () => () => undefined,
@@ -220,6 +221,16 @@ function ChatsPageContent() {
       void loadConversationData(conversationId);
     });
   }, [authState.authenticated, selectedConversationId, loadConversationData]);
+
+  useEffect(() => {
+    if (isReviewRoute || activeTab !== "chat" || viewMode !== "chat") {
+      return;
+    }
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
+  }, [messages, isReviewRoute, activeTab, viewMode]);
 
   function handleLogout() {
     clearSession();
@@ -399,11 +410,10 @@ function ChatsPageContent() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
-      <main className="min-h-[min(992px,100dvh)] max-h-[100dvh] w-full max-w-[1440px] overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm md:h-[992px]">
-        {/* Sur mobile : colonne discussions en haut (bouton visible). Sur md+ : barre 300px à gauche. */}
-        <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[300px_1fr]">
-          <aside className="flex min-h-0 max-h-[40vh] flex-col border-slate-200 bg-white md:max-h-none md:border-r">
+    <div className="flex h-svh min-h-0 flex-col bg-slate-100 p-4 md:p-6">
+      <main className="mx-auto flex min-h-0 w-full max-w-[1440px] flex-1 flex-col overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
+        <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(0,280px)_minmax(0,1fr)] md:gap-0">
+          <aside className="flex min-h-0 max-h-[36svh] flex-col border-slate-200 bg-white md:max-h-none md:border-r">
             <div className="shrink-0 border-b border-slate-200 px-5 py-4">
               <h1 className="text-xs font-medium text-[#803cda]">NEWSFOUNDRY</h1>
               <button
@@ -415,7 +425,7 @@ function ChatsPageContent() {
                 + Nouvelle discussion
               </button>
             </div>
-            <ul className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+            <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-4">
               {chats.map((chat) => (
                 <li
                   key={chat.id}
@@ -451,15 +461,15 @@ function ChatsPageContent() {
               ))}
             </ul>
             <button
-              className="m-4 rounded-md border border-slate-300 px-3 py-2 text-sm text-[#898989] hover:bg-slate-100"
+              className="m-4 shrink-0 rounded-md border border-slate-300 px-3 py-2 text-sm text-[#898989] hover:bg-slate-100"
               onClick={handleLogout}
             >
               Se deconnecter
             </button>
           </aside>
 
-          <section className="flex h-full flex-col bg-[#f4f4fb]">
-            <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
+          <section className="flex min-h-0 flex-col overflow-hidden bg-[#f4f4fb] md:min-h-0">
+            <header className="shrink-0 border-b border-slate-200 bg-white px-4 py-3 md:px-6 md:py-4">
               <div className="flex flex-1 flex-col gap-1">
                 <div className="flex items-center gap-2">
                   <button
@@ -510,9 +520,10 @@ function ChatsPageContent() {
               </div>
             </header>
 
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
             {currentTab === "chat" && currentViewMode === "home" ? (
-              <div className="flex flex-1 items-center justify-center p-8">
-                <div className="w-full max-w-[620px] rounded-xl bg-white px-12 py-14 text-center shadow-sm">
+              <div className="flex min-h-full items-center justify-center p-6 md:p-8">
+                <div className="w-full max-w-[620px] rounded-xl bg-white px-8 py-12 text-center shadow-sm md:px-12 md:py-14">
                   <div className="flex justify-center">
                     <Image
                       src="/Robo.png"
@@ -541,32 +552,33 @@ function ChatsPageContent() {
             ) : null}
 
             {currentTab === "chat" && currentViewMode === "chat" ? (
-              <div className="flex-1 overflow-y-auto p-8">
-                <div className="mx-auto max-w-4xl space-y-6">
+              <div className="p-4 md:p-8">
+                <div className="mx-auto max-w-4xl space-y-6 pb-4">
                   {messages.map((m) =>
                     m.role === "user" ? (
                       <div
                         key={m.id}
-                        className="ml-auto max-w-[420px] rounded-md bg-[#23232f] p-4 text-sm text-white"
+                        className="ml-auto max-w-[min(100%,28rem)] rounded-md bg-[#23232f] p-4 text-sm text-white break-words whitespace-pre-wrap"
                       >
                         {m.content}
                       </div>
                     ) : (
                       <div
                         key={m.id}
-                        className="max-w-[560px] rounded-md bg-white p-4 text-sm text-slate-700"
+                        className="max-w-[min(100%,36rem)] rounded-md bg-white p-4 text-sm text-slate-700 break-words"
                       >
                         <ChatMarkdown content={m.content} />
                       </div>
                     ),
                   )}
+                  <div ref={messagesEndRef} className="h-px shrink-0" aria-hidden />
                 </div>
               </div>
             ) : null}
 
             {currentTab === "review" ? (
-              <div className="flex-1 overflow-y-auto p-8">
-                <div className="mx-auto max-w-4xl space-y-4">
+              <div className="p-4 md:p-8">
+                <div className="mx-auto max-w-4xl space-y-4 pb-6">
                   <h3 className="text-lg font-semibold text-slate-800">Revues de Presse</h3>
                   <p className="text-sm text-slate-500">
                     Choisissez un sujet puis generez une revue a partir de l&apos;historique de la
@@ -606,11 +618,11 @@ function ChatsPageContent() {
                         ? "Aucune revue pour le moment."
                         : `${allPressReviews.length} revue(s).`}
                     </p>
-                    <ul className="mt-3 max-h-[220px] space-y-2 overflow-y-auto text-xs">
+                    <ul className="mt-3 space-y-2 text-xs">
                       {allPressReviews.map((r) => (
                         <li
                           key={`${r.chat_id}-${r.id}`}
-                          className="rounded border border-slate-200 bg-white px-3 py-2 text-slate-700"
+                          className="rounded border border-slate-200 bg-white px-3 py-2 text-slate-700 break-words"
                         >
                           <span className="font-medium text-[#803cda]">
                             {r.review_title || r.topic}
@@ -619,7 +631,7 @@ function ChatsPageContent() {
                             <span className="text-slate-500"> — {r.chat_title}</span>
                           ) : null}
                           {r.general_summary ? (
-                            <p className="mt-1 line-clamp-2 text-slate-600">{r.general_summary}</p>
+                            <p className="mt-1 text-slate-600">{r.general_summary}</p>
                           ) : null}
                         </li>
                       ))}
@@ -628,10 +640,10 @@ function ChatsPageContent() {
                   {reviews.map((review) => (
                     <article
                       key={review.id}
-                      className="rounded-lg bg-white p-6 shadow-sm"
+                      className="rounded-lg bg-white p-4 shadow-sm md:p-6"
                     >
-                      <div className="mb-3 flex items-center justify-between gap-2">
-                        <div>
+                      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 flex-1">
                           <h4 className="text-sm font-semibold text-slate-800">
                             {review.review_title || review.topic}
                           </h4>
@@ -639,14 +651,14 @@ function ChatsPageContent() {
                             Sujet : {review.topic} — {formatFrDate(review.created_at)}
                           </p>
                           {review.general_summary ? (
-                            <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                            <p className="mt-2 text-xs leading-relaxed text-slate-600 break-words">
                               {review.general_summary}
                             </p>
                           ) : null}
                         </div>
                         <button
                           type="button"
-                          className="shrink-0 rounded-md bg-[#282833] px-4 py-2 text-xs text-[#898989]"
+                          className="shrink-0 self-start rounded-md bg-[#282833] px-4 py-2 text-xs text-[#898989]"
                           onClick={() =>
                             void navigator.clipboard.writeText(review.content)
                           }
@@ -654,7 +666,7 @@ function ChatsPageContent() {
                           Copier
                         </button>
                       </div>
-                      <p className="text-sm leading-6 text-slate-700 whitespace-pre-wrap">
+                      <p className="text-sm leading-relaxed text-slate-700 break-words whitespace-pre-wrap">
                         {review.content}
                       </p>
                     </article>
@@ -662,8 +674,9 @@ function ChatsPageContent() {
                 </div>
               </div>
             ) : null}
+            </div>
 
-            <div className="border-t border-slate-200 bg-white p-4">
+            <div className="shrink-0 border-t border-slate-200 bg-white p-4">
               <div className="flex gap-2">
                 <input
                   value={prompt}
