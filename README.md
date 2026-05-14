@@ -92,3 +92,7 @@ Service API sur [Railway](https://railway.com/dashboard) : **`railway.toml`** à
 **Variables du service API :** **`DATABASE_URL`** ; **`JWT_SECRET`** ; clés **`GOOGLE_API_KEY`**, **`OPENAI_MODEL`**, **`WORLDNEWS_API_KEY`**, etc. ; **`CORS_ORIGINS`** = URL du frontend Vercel. Ne pas activer **`SEED_DEFAULT_USER`** en production.
 
 Après déploiement : **`GET https://newsfoundry-api-production.up.railway.app/health`** → `{"message":"ok","app":"newsfoundry-api"}`.
+
+## Configuration LLM (référence locale validée)
+
+Pour retrouver la configuration de développement qui fonctionne (Mistral, port 8001, proxy Next, SQLite, etc.), voir **`docs/CONFIG_LLM_REFERENCE.md`** — sans secrets ; les clés restent dans les fichiers `.env` ignorés par Git.

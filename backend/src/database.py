@@ -24,7 +24,7 @@ if _TEST_SQLITE:
         "sqlite://",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
-        echo=False,
+        echo=_sql_echo,
     )
 else:
     _raw_url = os.getenv("DATABASE_URL") or ""

@@ -7,37 +7,17 @@ from dataclasses import dataclass
 from typing import Any
 
 from pydantic_ai import Agent, RunContext
-from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
+from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.models import Model
 
-from services.llm import build_native_gemini_model
-from services.llm_model_spec import effective_chat_model_spec, resolve_chat_model_env_string
 from services.article_tool_persist import persist_fetched_articles_for_chat
+from services.llm import build_native_gemini_model
+from services.llm_exception_format import format_llm_exception, hint_for_rate_limit_429
+from services.llm_model_spec import effective_chat_model_spec, resolve_chat_model_env_string
 from services.news import search_news_for_chat_tool
 
 logger = logging.getLogger(__name__)
 
-
-def _format_llm_exception(exc: BaseException, *, max_body: int = 1200) -> str:
-    """Détail lisible pour l’UI et les logs (ModelHTTPError inclut status + corps API Google/OpenAI)."""
-    if isinstance(exc, ModelHTTPError):
-        body = exc.body
-        if body is None:
-            body_s = ""
-        elif isinstance(body, (bytes, bytearray)):
-            body_s = body.decode("utf-8", errors="replace")
-        else:
-            body_s = str(body)
-        body_s = " ".join(body_s.split())
-        if len(body_s) > max_body:
-            body_s = body_s[: max_body - 3] + "..."
-        core = f"HTTP {exc.status_code}, modèle « {exc.model_name} »"
-        if body_s:
-            return f"{core}, réponse API : {body_s}"
-        return core
-    if isinstance(exc, ModelAPIError):
-        return f"{exc.__class__.__name__} ({exc.model_name}): {exc.message}"
-    return f"{exc.__class__.__name__}: {exc}"
 
 def _string_model_spec(model: str | Model | None) -> str | None:
     """Spec ``fournisseur:modèle`` pour les contrôles de clé ; ``None`` si instance ``Model``."""
@@ -49,7 +29,7 @@ def _string_model_spec(model: str | Model | None) -> str | None:
 
 
 def _credentials_ready(model: str | Model | None) -> bool:
-    """OpenAI (openai:…) vs Google Gemini (google-gla:… / google-vertex:…)."""
+    """Clés présentes selon le fournisseur (OpenAI, Google Gemini, Mistral)."""
     if isinstance(model, Model):
         return True
     spec = _string_model_spec(model)
@@ -57,17 +37,21 @@ def _credentials_ready(model: str | Model | None) -> bool:
     sl = spec.lower()
     if sl.startswith("google-gla:") or sl.startswith("google-vertex:"):
         return bool(os.getenv("GOOGLE_API_KEY", "").strip())
+    if sl.startswith("mistral:"):
+        return bool(os.getenv("MISTRAL_API_KEY", "").strip())
     return bool(os.getenv("OPENAI_API_KEY", "").strip())
 
 
 def _missing_key_hint(model: str | Model | None) -> str:
     if isinstance(model, Model):
-        return "OPENAI_API_KEY ou GOOGLE_API_KEY"
+        return "OPENAI_API_KEY, GOOGLE_API_KEY ou MISTRAL_API_KEY"
     spec = _string_model_spec(model)
     assert spec is not None
     sl = spec.lower()
     if sl.startswith("google-gla:") or sl.startswith("google-vertex:"):
         return "GOOGLE_API_KEY (Google AI Studio / Vertex)"
+    if sl.startswith("mistral:"):
+        return "MISTRAL_API_KEY (console Mistral)"
     return "OPENAI_API_KEY"
 
 
@@ -143,7 +127,7 @@ async def run_agent_reply(
     if not _credentials_ready(model):
         return (
             f"Impossible d'appeler le modèle d'IA (configurez {_missing_key_hint(model)} pour le modèle "
-            f"défini (GEMINI_MODEL ou OPENAI_MODEL), puis redémarrez le backend). "
+            f"défini (MISTRAL_MODEL, GEMINI_MODEL ou OPENAI_MODEL), puis redémarrez le backend). "
             "En attendant, voici un extrait du contexte articles disponible:\n\n"
             + articles_context[:1200]
         )
@@ -156,25 +140,32 @@ async def run_agent_reply(
     except ModelHTTPError as exc:
         logger.warning("run_agent_reply: erreur HTTP modèle", exc_info=True)
         if exc.status_code == 429:
-            return "Quota d'IA épuisé, réessayez dans une minute."
+            detail = format_llm_exception(exc, max_body=500)
+            return (
+                "Limite de débit, quota ou capacité du fournisseur d’IA (HTTP 429). "
+                "Réessayez plus tard, espacez les messages, ou vérifiez votre plan "
+                "(Mistral La Plateforme, Google AI Studio, OpenAI)."
+                f"{hint_for_rate_limit_429(detail)} "
+                f"Indication technique : {detail}"
+            )
         if exc.status_code == 404:
             return "Modèle d'IA indisponible (vérifiez la config)."
-        detail = _format_llm_exception(exc)
+        detail = format_llm_exception(exc)
         return (
             "Impossible d'appeler le modèle d'IA (vérifiez "
-            f"{_missing_key_hint(model)} et GEMINI_MODEL / OPENAI_MODEL — chaîne « fournisseur:modèle », "
-            "ex. google-gla:gemini-1.5-flash). "
+            f"{_missing_key_hint(model)} et MISTRAL_MODEL / GEMINI_MODEL / OPENAI_MODEL — ex. mistral:mistral-small-latest, "
+            "google-gla:gemini-1.5-flash, openai:gpt-4o-mini). "
             f"Détail technique : {detail}. "
             "En attendant, voici un extrait du contexte articles disponible:\n\n"
             + articles_context[:1200]
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("run_agent_reply: échec appel modèle", exc_info=True)
-        detail = _format_llm_exception(exc)
+        detail = format_llm_exception(exc)
         return (
             "Impossible d'appeler le modèle d'IA (vérifiez "
-            f"{_missing_key_hint(model)} et GEMINI_MODEL / OPENAI_MODEL — chaîne « fournisseur:modèle », "
-            "ex. google-gla:gemini-1.5-flash). "
+            f"{_missing_key_hint(model)} et MISTRAL_MODEL / GEMINI_MODEL / OPENAI_MODEL — ex. mistral:mistral-small-latest, "
+            "google-gla:gemini-1.5-flash, openai:gpt-4o-mini). "
             f"Détail technique : {detail}. "
             "En attendant, voici un extrait du contexte articles disponible:\n\n"
             + articles_context[:1200]

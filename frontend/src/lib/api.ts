@@ -10,9 +10,20 @@ function resolveApiBaseUrl(): string {
   if (!raw) {
     return "http://localhost:8000";
   }
+  // Même origine (Next) → évite CORS / NetworkError entre localhost:3000 et 127.0.0.1:8001.
+  // Nécessite la réécriture ``/api-backend/*`` dans ``next.config.ts`` + ``BACKEND_PROXY_TARGET``.
+  if (raw.startsWith("/")) {
+    if (raw.startsWith("//")) {
+      console.warn(
+        `[NewsFoundry] NEXT_PUBLIC_API_URL invalide (${JSON.stringify(raw)}) — utilisation de http://localhost:8000.`,
+      );
+      return "http://localhost:8000";
+    }
+    return raw.replace(/\/+$/, "") || "/api-backend";
+  }
   if (!/^https?:\/\//i.test(raw)) {
     console.warn(
-      `[NewsFoundry] NEXT_PUBLIC_API_URL doit être une URL absolue (ex. http://127.0.0.1:8000). ` +
+      `[NewsFoundry] NEXT_PUBLIC_API_URL doit commencer par / ou http(s)://. ` +
         `Valeur reçue : ${JSON.stringify(raw)} — utilisation de http://localhost:8000.`,
     );
     return "http://localhost:8000";
@@ -67,7 +78,7 @@ async function networkFetch(
     const reason = cause instanceof Error ? cause.message : String(cause);
     throw new Error(
       `Impossible de joindre l’API (${API_BASE_URL}). ` +
-        `Démarrez le backend (port 8000) : cd backend puis uv run --env-file .env src/main.py. ` +
+        `Démarrez le backend (variable PORT dans backend/.env, URL ${API_BASE_URL}) : cd backend puis uv run --env-file .env src/main.py. ` +
         `Détail : ${reason}`,
     );
   }
@@ -170,7 +181,7 @@ export async function pingBackend(): Promise<BackendHello> {
   if (!data || typeof data !== "object") {
     throw new Error(
       `Le service sur ${API_BASE_URL} n’est pas l’API NewsFoundry (réponse /health inattendue : ${JSON.stringify(data)}). ` +
-        `Un autre programme occupe peut‑être le port 8000 — arrêtez‑le ou définissez NEXT_PUBLIC_API_URL vers la bonne URL, ` +
+        `Un autre programme occupe peut‑être le port de l’API — arrêtez‑le ou définissez NEXT_PUBLIC_API_URL vers la bonne URL, ` +
         `puis lancez ce backend : cd backend puis uv run --env-file .env src/main.py.`,
     );
   }
@@ -180,7 +191,7 @@ export async function pingBackend(): Promise<BackendHello> {
     throw new Error(
       `Sur ${API_BASE_URL}, /health ne correspond pas au backend NewsFoundry actuel (réponse : ${JSON.stringify(data)}). ` +
         `Cause fréquente : un ancien processus utilise encore le port (il expose /health mais pas /login → 404 à la connexion). ` +
-        `Sous Windows : netstat -ano | findstr :8000 puis taskkill /PID <pid> /F. Ensuite : cd backend puis uv run --env-file .env src/main.py.`,
+        `Sous Windows : netstat -ano (repérez le PID sur le port de cette URL) puis taskkill /PID <pid> /F. Ensuite : cd backend puis uv run --env-file .env src/main.py.`,
     );
   }
 
@@ -230,7 +241,7 @@ export async function loginRequest(
 
 export async function listChats(): Promise<ChatDTO[]> {
   const response = await withAuthRetry((access) =>
-    fetch(`${API_BASE_URL}/chats`, { headers: authHeaders(access) }),
+    networkFetch(`${API_BASE_URL}/chats`, { headers: authHeaders(access) }),
   );
   if (!response.ok) {
     throw new Error(await parseApiError(response));
@@ -240,7 +251,7 @@ export async function listChats(): Promise<ChatDTO[]> {
 
 export async function createChat(title?: string): Promise<ChatDTO> {
   const response = await withAuthRetry((access) =>
-    fetch(`${API_BASE_URL}/chats`, {
+    networkFetch(`${API_BASE_URL}/chats`, {
       method: "POST",
       headers: authHeaders(access),
       body: JSON.stringify({ title: title ?? null }),
@@ -254,7 +265,7 @@ export async function createChat(title?: string): Promise<ChatDTO> {
 
 export async function deleteChat(chatId: number): Promise<void> {
   const response = await withAuthRetry((access) =>
-    fetch(`${API_BASE_URL}/chats/${chatId}`, {
+    networkFetch(`${API_BASE_URL}/chats/${chatId}`, {
       method: "DELETE",
       headers: authHeaders(access),
     }),
@@ -266,7 +277,9 @@ export async function deleteChat(chatId: number): Promise<void> {
 
 export async function listMessages(chatId: number): Promise<MessageDTO[]> {
   const response = await withAuthRetry((access) =>
-    fetch(`${API_BASE_URL}/chats/${chatId}`, { headers: authHeaders(access) }),
+    networkFetch(`${API_BASE_URL}/chats/${chatId}`, {
+      headers: authHeaders(access),
+    }),
   );
   if (!response.ok) {
     throw new Error(await parseApiError(response));
@@ -280,7 +293,7 @@ export async function sendMessage(
   content: string,
 ): Promise<MessageDTO> {
   const response = await withAuthRetry((access) =>
-    fetch(`${API_BASE_URL}/chats/${chatId}/messages`, {
+    networkFetch(`${API_BASE_URL}/chats/${chatId}/messages`, {
       method: "POST",
       headers: authHeaders(access),
       body: JSON.stringify({ content }),
@@ -297,7 +310,7 @@ export async function fetchBreakingNews(
   text = "actualites",
 ): Promise<void> {
   const response = await withAuthRetry((access) =>
-    fetch(`${API_BASE_URL}/chats/${chatId}/news/fetch`, {
+    networkFetch(`${API_BASE_URL}/chats/${chatId}/news/fetch`, {
       method: "POST",
       headers: authHeaders(access),
       body: JSON.stringify({ text }),
@@ -310,7 +323,7 @@ export async function fetchBreakingNews(
 
 export async function listReviews(chatId: number): Promise<PressReviewDTO[]> {
   const response = await withAuthRetry((access) =>
-    fetch(`${API_BASE_URL}/chats/${chatId}/reviews`, {
+    networkFetch(`${API_BASE_URL}/chats/${chatId}/reviews`, {
       headers: authHeaders(access),
     }),
   );
@@ -323,7 +336,7 @@ export async function listReviews(chatId: number): Promise<PressReviewDTO[]> {
 /** Toutes les revues de l’utilisateur (toutes discussions). */
 export async function listAllPressReviews(): Promise<PressReviewDTO[]> {
   const response = await withAuthRetry((access) =>
-    fetch(`${API_BASE_URL}/reviews`, {
+    networkFetch(`${API_BASE_URL}/reviews`, {
       headers: authHeaders(access),
     }),
   );
@@ -338,7 +351,7 @@ export async function createPressReview(
   topic: string,
 ): Promise<PressReviewDTO> {
   const response = await withAuthRetry((access) =>
-    fetch(`${API_BASE_URL}/chats/${chatId}/reviews`, {
+    networkFetch(`${API_BASE_URL}/chats/${chatId}/reviews`, {
       method: "POST",
       headers: authHeaders(access),
       body: JSON.stringify({ topic }),

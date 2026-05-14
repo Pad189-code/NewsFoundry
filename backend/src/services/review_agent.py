@@ -11,6 +11,7 @@ from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.models import Model
 
 from services.llm import build_native_gemini_model
+from services.llm_exception_format import format_llm_exception, hint_for_rate_limit_429
 from services.llm_model_spec import effective_review_model_spec, resolve_review_model_env_string
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,8 @@ def _review_llm_ready(model: str | Model | None) -> bool:
     sl = spec.lower()
     if sl.startswith("google-gla:") or sl.startswith("google-vertex:"):
         return bool(os.getenv("GOOGLE_API_KEY", "").strip())
+    if sl.startswith("mistral:"):
+        return bool(os.getenv("MISTRAL_API_KEY", "").strip())
     return bool(os.getenv("OPENAI_API_KEY", "").strip())
 
 
@@ -181,7 +184,13 @@ async def run_press_review_structured(
     except ModelHTTPError as exc:
         logger.warning("run_press_review_structured: erreur HTTP modèle", exc_info=True)
         if exc.status_code == 429:
-            return _quota_or_model_error_output("Quota d'IA épuisé, réessayez dans une minute.")
+            detail = format_llm_exception(exc, max_body=500)
+            return _quota_or_model_error_output(
+                "Limite de débit, quota ou capacité du fournisseur d’IA (HTTP 429). "
+                "Réessayez plus tard ou vérifiez votre plan (Mistral La Plateforme, Google AI Studio, OpenAI)."
+                f"{hint_for_rate_limit_429(detail)} "
+                f"Indication technique : {detail}",
+            )
         if exc.status_code == 404:
             return _quota_or_model_error_output("Modèle d'IA indisponible (vérifiez la config).")
         return _fallback_output(topic, transcript, articles_rag)

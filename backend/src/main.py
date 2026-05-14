@@ -17,6 +17,10 @@ configured_origins = [
     origin.strip() for origin in CORS_ORIGINS.split(",") if origin.strip()
 ]
 default_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+# Toujours autoriser le dev local même si CORS_ORIGINS ne liste que la prod (évite « Failed to fetch »).
+cors_allow_origins = list(
+    dict.fromkeys([*default_origins, *configured_origins]),
+)
 
 
 @asynccontextmanager
@@ -41,7 +45,7 @@ async def security_headers_middleware(request: Request, call_next):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=configured_origins or default_origins,
+    allow_origins=cors_allow_origins,
     allow_origin_regex=r"https://.*\.vercel\.app|http://[\w.-]+:3000",
     allow_credentials=True,
     allow_methods=["*"],
