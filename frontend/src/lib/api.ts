@@ -169,12 +169,21 @@ export async function pingBackend(): Promise<BackendHello> {
   });
 
   if (!response.ok) {
-    const vercelProxyHint =
-      API_BASE_URL.startsWith("/") && response.status === 404
-        ? " Sur Vercel, définissez BACKEND_PROXY_TARGET (URL HTTPS Railway) pour le build : les rewrites /api-backend sont figées au next build. Sans cela, /api-backend renvoie 404."
-        : "";
+    let hint = "";
+    if (API_BASE_URL.startsWith("/")) {
+      if (response.status === 404) {
+        hint =
+          " Sur Vercel : définissez BACKEND_PROXY_TARGET avant le build (les rewrites /api-backend sont figées au next build).";
+      } else if (response.status >= 500 && response.status < 600) {
+        hint =
+          " En local, un HTTP 500 sur /api-backend/health vient souvent du proxy Next quand le backend n’est pas joignable : démarrez l’API (cd backend puis uv run --env-file .env src/main.py), vérifiez PORT dans backend/.env et que BACKEND_PROXY_TARGET dans frontend/.env pointe vers le même hôte:port (ex. http://localhost:8000).";
+      } else if (response.status === 502 || response.status === 503) {
+        hint =
+          " Next n’a pas pu joindre le backend : vérifiez BACKEND_PROXY_TARGET et que uvicorn écoute bien.";
+      }
+    }
     throw new Error(
-      `L’API répond mais /health n’est pas OK (${response.status}). Vérifiez ${API_BASE_URL}.${vercelProxyHint}`,
+      `L’API répond mais /health n’est pas OK (${response.status}). Vérifiez ${API_BASE_URL}.${hint}`,
     );
   }
 

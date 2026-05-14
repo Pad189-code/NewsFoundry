@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 /** Cible du proxy interne (lu au build et au dev depuis .env / .env.local). */
 const backendProxyTarget = (
-  process.env.BACKEND_PROXY_TARGET?.trim() || "http://127.0.0.1:8000"
+  process.env.BACKEND_PROXY_TARGET?.trim() || "http://localhost:8000"
 ).replace(/\/+$/, "");
 
 const nextConfig: NextConfig = {
