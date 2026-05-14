@@ -95,4 +95,4 @@ Après déploiement : **`GET https://newsfoundry-api-production.up.railway.app/h
 
 ## Configuration LLM (référence locale validée)
 
-Pour retrouver la configuration de développement qui fonctionne (Mistral, port 8001, proxy Next, SQLite, etc.), voir **`docs/CONFIG_LLM_REFERENCE.md`** — sans secrets ; les clés restent dans les fichiers `.env` ignorés par Git.
+Pour retrouver la configuration de développement qui fonctionne (Mistral, port HTTP **8000**, proxy Next, SQLite, etc.), voir **`docs/CONFIG_LLM_REFERENCE.md`** — sans secrets ; les clés restent dans les fichiers `.env` ignorés par Git.

@@ -12,7 +12,7 @@ Ce fichier sert de **référence stable** pour la configuration qui fonctionne e
 
 ## Backend (développement)
 
-- **`PORT=8001`** — port HTTP de l’API FastAPI.
+- **`PORT=8000`** — port HTTP de l’API FastAPI (défaut si absent ; utiliser **8001** seulement si le port 8000 est déjà pris sur la machine).
 - **`TEST_SQLITE=1`** — SQLite en mémoire (données perdues à l’arrêt du processus).
 - **`SQL_ECHO=1`** — journalisation SQL (SQLAlchemy) dans le terminal du backend (optionnel en prod).
 - **`MISTRAL_MODEL`** — exemple validé côté projet : `mistral-small-latest` (à adapter selon disponibilité Mistral).
@@ -23,7 +23,7 @@ Démarrage : depuis `backend/`, `uv run --env-file .env src/main.py`.
 ## Frontend (développement)
 
 - **`NEXT_PUBLIC_API_URL=/api-backend`** — appels API en **same-origin** via Next (évite CORS / `NetworkError` entre `localhost` et `127.0.0.1`).
-- **`BACKEND_PROXY_TARGET=http://127.0.0.1:8001`** — cible du proxy défini dans `frontend/next.config.ts` (réécriture `/api-backend/:path*` → backend).
+- **`BACKEND_PROXY_TARGET=http://127.0.0.1:8000`** — cible du proxy dans `frontend/next.config.ts` (réécriture `/api-backend/:path*` → backend), alignée sur `PORT` du backend.
 - Application : `http://localhost:3000` (ou `http://127.0.0.1:3000`).
 
 Démarrage : depuis `frontend/`, `npm run dev -- -p 3000` (ou `npm run dev:webpack -- -p 3000` en secours).

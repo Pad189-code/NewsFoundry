@@ -10,7 +10,7 @@ function resolveApiBaseUrl(): string {
   if (!raw) {
     return "http://localhost:8000";
   }
-  // Même origine (Next) → évite CORS / NetworkError entre localhost:3000 et 127.0.0.1:8001.
+  // Même origine (Next) → évite CORS / NetworkError entre localhost:3000 et 127.0.0.1:8000.
   // Nécessite la réécriture ``/api-backend/*`` dans ``next.config.ts`` + ``BACKEND_PROXY_TARGET``.
   if (raw.startsWith("/")) {
     if (raw.startsWith("//")) {
