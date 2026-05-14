@@ -228,11 +228,16 @@ function ChatsPageContent() {
 
   async function handleSubmitPrompt() {
     if (!prompt.trim() || selectedConversationId === null) {
+      if (!prompt.trim()) {
+        return;
+      }
+      setError("Sélectionnez une discussion dans la colonne de gauche.");
       return;
     }
     if (!isAuthenticated()) {
       return;
     }
+    const keepReviewTab = searchParams.get("tab") === "review";
     setBusy(true);
     setError(null);
     try {
@@ -242,8 +247,13 @@ function ChatsPageContent() {
       const items = await listChats();
       setChats(items);
       setViewMode("chat");
-      router.push("/chats");
-      setActiveTab("chat");
+      if (keepReviewTab) {
+        router.push("/chats?tab=review");
+        setActiveTab("review");
+      } else {
+        router.push("/chats");
+        setActiveTab("chat");
+      }
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -334,7 +344,13 @@ function ChatsPageContent() {
   }
 
   async function handleGenerateReview() {
-    if (!reviewTopic.trim() || selectedConversationId === null) {
+    if (!reviewTopic.trim()) {
+      return;
+    }
+    if (selectedConversationId === null) {
+      setError(
+        "Sélectionnez une discussion dans la colonne de gauche avant de générer une revue.",
+      );
       return;
     }
     if (!isAuthenticated()) {
@@ -570,7 +586,11 @@ function ChatsPageContent() {
                     </div>
                     <button
                       type="button"
-                      disabled={busy || !reviewTopic.trim()}
+                      disabled={
+                        busy ||
+                        !reviewTopic.trim() ||
+                        selectedConversationId === null
+                      }
                       onClick={() => void handleGenerateReview()}
                       className="rounded-md bg-[#803cda] px-4 py-2 text-sm font-medium text-white hover:bg-[#6f2fc3] disabled:opacity-50"
                     >
@@ -643,51 +663,53 @@ function ChatsPageContent() {
               </div>
             ) : null}
 
-            {currentTab === "chat" ? (
-              <div className="border-t border-slate-200 bg-white p-4">
-                <div className="flex gap-2">
-                  <input
-                    value={prompt}
-                    onChange={(event) => setPrompt(event.target.value)}
-                    placeholder="Tapez votre message ici..."
-                    disabled={busy}
-                    className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm text-[#898989] outline-none focus:border-[#803cda] disabled:bg-slate-50"
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        void handleSubmitPrompt();
-                      }
-                    }}
+            <div className="border-t border-slate-200 bg-white p-4">
+              <div className="flex gap-2">
+                <input
+                  value={prompt}
+                  onChange={(event) => setPrompt(event.target.value)}
+                  placeholder="Tapez votre message ici..."
+                  disabled={busy || selectedConversationId === null}
+                  className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm text-[#898989] outline-none focus:border-[#803cda] disabled:bg-slate-50"
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void handleSubmitPrompt();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleSubmitPrompt()}
+                  disabled={busy || selectedConversationId === null}
+                  className="rounded-md disabled:opacity-40"
+                  aria-label="Envoyer"
+                >
+                  <Image
+                    src="/EnvoiR.png"
+                    alt="Envoyer"
+                    width={40}
+                    height={40}
+                    className="h-10 w-auto"
                   />
-                  <button
-                    type="button"
-                    onClick={() => void handleSubmitPrompt()}
-                    disabled={busy}
-                    className="rounded-md disabled:opacity-40"
-                    aria-label="Envoyer"
-                  >
-                    <Image
-                      src="/EnvoiR.png"
-                      alt="Envoyer"
-                      width={40}
-                      height={40}
-                      className="h-10 w-auto"
-                    />
-                  </button>
-                </div>
-                <p className="mt-2 text-xs text-slate-500">
-                  Connecte en tant que {authState.email}
-                  {busy ? " — envoi en cours…" : ""}
-                </p>
+                </button>
               </div>
-            ) : (
-              <div className="border-t border-slate-200 bg-white px-4 py-3">
-                <p className="text-xs text-slate-500">
-                  Connecte en tant que {authState.email}
-                  {busy ? " — operation en cours…" : ""}
-                </p>
-              </div>
-            )}
+              <p className="mt-2 text-xs text-slate-500">
+                Connecte en tant que {authState.email}
+                {busy
+                  ? currentTab === "review"
+                    ? " — operation en cours…"
+                    : " — envoi en cours…"
+                  : ""}
+                {currentTab === "review" && !busy ? (
+                  <span className="text-slate-400">
+                    {" "}
+                    — Les messages s&apos;ajoutent aussi depuis l&apos;onglet
+                    revue.
+                  </span>
+                ) : null}
+              </p>
+            </div>
           </section>
         </div>
       </main>
