@@ -11,7 +11,7 @@ function resolveApiBaseUrl(): string {
     return "http://localhost:8000";
   }
   // Même origine (Next) → évite CORS / NetworkError entre localhost:3000 et 127.0.0.1:8000.
-  // Nécessite la réécriture ``/api-backend/*`` dans ``next.config.ts`` + ``BACKEND_PROXY_TARGET``.
+  // Nécessite le proxy ``/api-backend/*`` (``src/app/api-backend/[[...path]]/route.ts``) + ``BACKEND_PROXY_TARGET``.
   if (raw.startsWith("/")) {
     if (raw.startsWith("//")) {
       console.warn(
@@ -163,8 +163,12 @@ export async function pingBackend(): Promise<BackendHello> {
   });
 
   if (!response.ok) {
+    const vercelProxyHint =
+      API_BASE_URL.startsWith("/") && response.status === 404
+        ? ` Sur l’hébergeur (ex. Vercel), définissez la variable d’environnement BACKEND_PROXY_TARGET avec l’URL HTTPS de l’API (Railway). Sans elle, /api-backend/* n’atteint pas le backend et Next renvoie 404.`
+        : "";
     throw new Error(
-      `L’API répond mais /health n’est pas OK (${response.status}). Vérifiez ${API_BASE_URL}.`,
+      `L’API répond mais /health n’est pas OK (${response.status}). Vérifiez ${API_BASE_URL}.${vercelProxyHint}`,
     );
   }
 
