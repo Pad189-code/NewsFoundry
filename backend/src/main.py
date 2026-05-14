@@ -22,12 +22,29 @@ cors_allow_origins = list(
     dict.fromkeys([*default_origins, *configured_origins]),
 )
 
-# 1/true = autorise toutes les origines (tests ou dépannage). allow_credentials=False est obligatoire
-# avec allow_origins=["*"] (sinon le navigateur ignore la réponse CORS).
-_cors_relaxed = os.getenv("CORS_RELAXED", "").strip().lower() in ("1", "true", "yes")
+# CORS « large » : allow_origins=["*"] impose allow_credentials=False (spécification CORS / Starlette).
+# Tri-state CORS_RELAXED : 1/0 explicite ; si absent, activé sur Railway pour éviter les refus d’origine
+# (Vercel custom, previews, etc.) sans variable CORS_ORIGINS.
+def _cors_relaxed_from_env() -> bool:
+    raw = os.getenv("CORS_RELAXED", "").strip().lower()
+    if raw in ("1", "true", "yes"):
+        return True
+    if raw in ("0", "false", "no"):
+        return False
+    return bool(
+        os.getenv("RAILWAY_ENVIRONMENT", "").strip()
+        or os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip()
+    )
+
+
+_cors_relaxed = _cors_relaxed_from_env()
 # Remplace la regex par défaut si besoin (ex. domaine Vercel custom : https://monapp\.com|https://www\.monapp\.com).
 _cors_origin_regex = os.getenv("CORS_ORIGIN_REGEX", "").strip()
-_default_origin_regex = r"https://.*\.vercel\.app|http://[\w.-]+:\d+"
+_default_origin_regex = (
+    r"https://.*\.vercel\.app|"
+    r"https?://(?:localhost|127\.0\.0\.1)(?::\d+)?|"
+    r"http://[\w.-]+:\d+"
+)
 cors_origin_regex = _cors_origin_regex or _default_origin_regex
 
 
