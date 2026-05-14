@@ -15,6 +15,38 @@ const HOP_BY_HOP = new Set([
   "host",
 ]);
 
+/** En-têtes à ne pas relayer vers le backend (Node recalcule Content-Length ; le reste évite les conflits Vercel → fetch). */
+const STRIP_REQUEST = new Set([
+  ...HOP_BY_HOP,
+  "content-length",
+  "accept-encoding",
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-port",
+  "x-forwarded-proto",
+  "x-real-ip",
+  "x-vercel-id",
+  "x-vercel-forwarded-for",
+  "x-vercel-deployment-url",
+  "x-vercel-proxied-for",
+  "x-vercel-ja4-digest",
+  "x-invoke-path",
+  "x-invoke-query",
+  "x-middleware-invoke",
+  "x-middleware-subrequest",
+  "next-url",
+  "x-nextjs-data",
+  "x-open-next",
+]);
+
+/** En-têtes de réponse amont à ne pas renvoyer au navigateur (corps déjà décompressé par fetch). */
+const STRIP_RESPONSE = new Set([
+  ...HOP_BY_HOP,
+  "content-encoding",
+  "content-length",
+  "transfer-encoding",
+]);
+
 function resolveBackendBase(): string | null {
   const raw =
     process.env.BACKEND_PROXY_TARGET?.trim() || "http://127.0.0.1:8000";
@@ -25,12 +57,24 @@ function resolveBackendBase(): string | null {
   return base;
 }
 
-function copyHeaders(from: Headers, to: Headers) {
+function filterRequestHeaders(from: Headers): Headers {
+  const to = new Headers();
   from.forEach((value, key) => {
-    if (!HOP_BY_HOP.has(key.toLowerCase())) {
+    if (!STRIP_REQUEST.has(key.toLowerCase())) {
       to.set(key, value);
     }
   });
+  return to;
+}
+
+function filterResponseHeaders(from: Headers): Headers {
+  const to = new Headers();
+  from.forEach((value, key) => {
+    if (!STRIP_RESPONSE.has(key.toLowerCase())) {
+      to.append(key, value);
+    }
+  });
+  return to;
 }
 
 async function proxy(
@@ -53,13 +97,19 @@ async function proxy(
     pathSegments && pathSegments.length > 0
       ? `/${pathSegments.join("/")}`
       : "";
-  const target = new URL(`${base}${suffix}`);
-  request.nextUrl.searchParams.forEach((value, key) => {
-    target.searchParams.set(key, value);
-  });
-
-  const outHeaders = new Headers();
-  copyHeaders(request.headers, outHeaders);
+  let target: URL;
+  try {
+    target = new URL(`${base}${suffix}`);
+    request.nextUrl.searchParams.forEach((value, key) => {
+      target.searchParams.set(key, value);
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json(
+      { detail: `URL proxy invalide : ${message}` },
+      { status: 400 },
+    );
+  }
 
   const method = request.method.toUpperCase();
   let body: ArrayBuffer | undefined;
@@ -67,21 +117,35 @@ async function proxy(
     body = await request.arrayBuffer();
   }
 
-  const upstream = await fetch(target, {
-    method,
-    headers: outHeaders,
-    body: body && body.byteLength > 0 ? body : undefined,
-    redirect: "manual",
-  });
+  const outHeaders = filterRequestHeaders(request.headers);
 
-  const responseHeaders = new Headers();
-  copyHeaders(upstream.headers, responseHeaders);
+  try {
+    const upstream = await fetch(target, {
+      method,
+      headers: outHeaders,
+      body: body && body.byteLength > 0 ? body : undefined,
+      redirect: "manual",
+    });
 
-  return new NextResponse(upstream.body, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers: responseHeaders,
-  });
+    const responseHeaders = filterResponseHeaders(upstream.headers);
+    const payload = await upstream.arrayBuffer();
+
+    return new NextResponse(payload, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: responseHeaders,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json(
+      {
+        detail:
+          `Échec du proxy vers le backend (${target.origin}). ` +
+          `Vérifiez BACKEND_PROXY_TARGET et que l’API répond en HTTPS. Détail : ${message}`,
+      },
+      { status: 502 },
+    );
+  }
 }
 
 type RouteCtx = { params: Promise<{ path?: string[] }> };
