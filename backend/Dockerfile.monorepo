@@ -1,0 +1,18 @@
+# Build avec contexte = racine du monorepo (Root Directory vide sur Railway).
+# Commande locale : docker build -f backend/Dockerfile.monorepo .
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm
+
+WORKDIR /app
+
+COPY backend/pyproject.toml backend/uv.lock ./
+RUN uv sync --frozen
+
+COPY backend/src/ ./src/
+COPY backend/alembic.ini ./
+COPY backend/alembic/ ./alembic/
+COPY backend/docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
+
+EXPOSE 8000
+
+CMD ["./docker-entrypoint.sh"]

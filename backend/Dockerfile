@@ -1,16 +1,18 @@
+# Build Railway : Root Directory = backend/ (contexte = ce dossier).
+# Build local monorepo : docker build -f backend/Dockerfile backend
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm
 
 WORKDIR /app
 
-COPY backend/pyproject.toml backend/uv.lock ./
+COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen
 
-COPY backend/src/ ./src/
-COPY backend/alembic.ini ./
-COPY backend/alembic/ ./alembic/
+COPY src/ ./src/
+COPY alembic.ini ./
+COPY alembic/ ./alembic/
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
 
-# Port indicatif en local ; en prod Railway définit PORT et main.py l’utilise.
 EXPOSE 8000
 
-# Écoute sur os.environ["PORT"] (injecté par Railway) et host 0.0.0.0 dans src/main.py.
-CMD ["uv", "run", "python", "src/main.py"]
+CMD ["./docker-entrypoint.sh"]

@@ -1,9 +1,8 @@
-# Railway — backend NewsFoundry (Docker).
-# Contexte de build = racine du dépôt (COPY backend/... dans backend/Dockerfile).
-# Dashboard : ne pas mettre Root Directory = backend/ pour ce service.
-# Secours si besoin : variable RAILWAY_DOCKERFILE_PATH = backend/Dockerfile
+# Railway — backend NewsFoundry.
+# Config actuelle Pad189 : Root Directory = backend/ → voir backend/railway.toml + backend/Dockerfile.
+# Alternative : Root Directory vide (racine repo) → dockerfilePath = backend/Dockerfile.monorepo
 
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "backend/Dockerfile"
+dockerfilePath = "backend/Dockerfile.monorepo"
 watchPatterns = ["backend/**"]

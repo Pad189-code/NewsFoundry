@@ -1,0 +1,7 @@
+# Railway — service API avec Root Directory = backend/ (dashboard).
+# Repo Pad189-code/NewsFoundry, branche main.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+watchPatterns = ["**"]
