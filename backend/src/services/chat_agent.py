@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.models import Model
@@ -13,6 +14,7 @@ from pydantic_ai.models import Model
 from services.article_tool_persist import persist_fetched_articles_for_chat
 from services.llm import build_native_gemini_model
 from services.llm_exception_format import format_llm_exception, hint_for_rate_limit_429
+from services.news import format_worldnews_http_error, sanitize_worldnews_error_detail
 from services.llm_model_spec import effective_chat_model_spec, resolve_chat_model_env_string
 from services.news import search_news_for_chat_tool
 
@@ -40,6 +42,33 @@ def _credentials_ready(model: str | Model | None) -> bool:
     if sl.startswith("mistral:"):
         return bool(os.getenv("MISTRAL_API_KEY", "").strip())
     return bool(os.getenv("OPENAI_API_KEY", "").strip())
+
+
+def _is_worldnews_exception(exc: BaseException) -> bool:
+    if isinstance(exc, httpx.HTTPStatusError):
+        try:
+            host = (exc.request.url.host or "").lower()
+        except Exception:  # noqa: BLE001
+            host = ""
+        if "worldnewsapi" in host:
+            return True
+    low = str(exc).lower()
+    return "worldnewsapi.com" in low or "worldnewsapi" in low or "world news api" in low
+
+
+def _worldnews_failure_reply(
+    *,
+    exc: httpx.HTTPStatusError,
+    articles_context: str,
+) -> str:
+    detail = format_worldnews_http_error(exc)
+    return (
+        "Impossible de rechercher des articles en ligne (World News API). "
+        f"{detail} "
+        "Le modèle d'IA (MISTRAL_API_KEY, etc.) n'est pas en cause si seule cette erreur apparaît. "
+        "En attendant, voici un extrait du contexte articles disponible:\n\n"
+        + articles_context[:1200]
+    )
 
 
 def _missing_key_hint(model: str | Model | None) -> str:
@@ -173,8 +202,10 @@ async def run_agent_reply(
             + articles_context[:1200]
         )
     except Exception as exc:  # noqa: BLE001
-        logger.warning("run_agent_reply: échec appel modèle", exc_info=True)
-        detail = format_llm_exception(exc)
+        logger.warning("run_agent_reply: échec appel agent", exc_info=True)
+        detail = sanitize_worldnews_error_detail(format_llm_exception(exc))
+        if isinstance(exc, httpx.HTTPStatusError) and _is_worldnews_exception(exc):
+            return _worldnews_failure_reply(exc=exc, articles_context=articles_context)
         return (
             "Impossible d'appeler le modèle d'IA (vérifiez "
             f"{_missing_key_hint(model)} et MISTRAL_MODEL / GEMINI_MODEL / OPENAI_MODEL — ex. mistral:mistral-small-latest, "

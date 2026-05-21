@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -194,6 +195,36 @@ def worldnews_api_key() -> str:
     return os.getenv("WORLDNEWS_API_KEY", "").strip()
 
 
+def sanitize_worldnews_error_detail(detail: str) -> str:
+    """Masque les clés API présentes dans les URLs d'erreur (logs / messages utilisateur)."""
+    return re.sub(r"api-key=[^&\s'\"]+", "api-key=***", detail, flags=re.IGNORECASE)
+
+
+def format_worldnews_http_error(exc: httpx.HTTPStatusError) -> str:
+    """Message utilisateur pour un échec HTTP World News API (sans exposer la clé)."""
+    code = exc.response.status_code
+    if code == 402:
+        return (
+            "World News API : abonnement, crédits ou paiement requis (HTTP 402). "
+            "Consultez votre compte sur https://worldnewsapi.com (quota, facturation). "
+            "Vérifiez WORLDNEWS_API_KEY dans backend/.env."
+        )
+    if code == 401:
+        return (
+            "World News API : clé API invalide ou refusée (HTTP 401). "
+            "Vérifiez WORLDNEWS_API_KEY dans backend/.env."
+        )
+    if code == 429:
+        return (
+            "World News API : limite de débit ou quota atteint (HTTP 429). "
+            "Réessayez plus tard ou vérifiez votre plan sur https://worldnewsapi.com ."
+        )
+    return (
+        f"World News API : erreur HTTP {code}. "
+        "Vérifiez WORLDNEWS_API_KEY et votre abonnement sur https://worldnewsapi.com ."
+    )
+
+
 def _format_publish_label(published_at: Any) -> str:
     if isinstance(published_at, datetime):
         return published_at.strftime("%d/%m/%Y %H:%M")
@@ -217,7 +248,10 @@ async def search_news_for_chat_tool(
     sujet: str,
 ) -> tuple[str, list[dict[str, Any]]]:
     """Une requête search-news : texte pour le LLM + liste normalisée pour la persistance."""
-    articles = await fetch_worldnews_articles(api_key=api_key, text=sujet, number=8)
+    try:
+        articles = await fetch_worldnews_articles(api_key=api_key, text=sujet, number=8)
+    except httpx.HTTPStatusError as exc:
+        return format_worldnews_http_error(exc), []
     if not articles:
         return (
             "Aucun article trouvé pour ce sujet (ou clé API absente / erreur réseau).",
