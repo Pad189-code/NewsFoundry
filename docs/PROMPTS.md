@@ -46,6 +46,15 @@ Ce document résume **pourquoi** les prompts système et les consignes utilisate
 
 ---
 
+## Création de revue (`POST /chats/{id}/reviews`)
+
+- **Déclenchement** : l’utilisateur ouvre la modale « Générer une revue de presse », saisit un **thème**, puis valide lorsqu’il est satisfait des articles déjà chargés via le chat.
+- **Sources** : articles persistés en base pour la discussion (`article`, triés par date de publication) + **transcript** du chat ; RAG optionnel (`retrieve_review_context`) pour ne garder que les passages les plus pertinents pour le thème.
+- **Persistance** : enregistrement dans `pressreview` (`review_title`, `general_summary`, `articles_breakdown_json`, `content` Markdown) et copie d’aperçu sur `chat` pour l’UI.
+- **Pas de nouvelle recherche presse obligatoire** à la génération : le flux s’appuie sur la veille déjà constituée pendant la conversation.
+
+---
+
 ## RAG revue (`services/review_rag.py`)
 
 - Pas un « prompt créatif » à proprement parler : le retrieval réduit le volume envoyé au modèle revue en privilégiant les documents **sémantiquement proches du sujet**.

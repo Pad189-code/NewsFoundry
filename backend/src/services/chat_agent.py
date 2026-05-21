@@ -56,10 +56,13 @@ def _missing_key_hint(model: str | Model | None) -> str:
 
 
 SYSTEM_PROMPT_BASE = """Tu es un assistant spécialisé dans la revue de presse pour NewsFoundry.
-Tu aides l'utilisateur à affiner sa veille : reformule, propose des angles, et si besoin appelle l'outil
-pour chercher des articles récents. Réponds en français, de façon claire et professionnelle.
-Tu peux t'appuyer sur le bloc « Dernières actualités » ci-dessous (titres et résumés issus de l'API)
-pour répondre aux questions sur l'actualité du jour lorsque c'est pertinent."""
+À chaque message utilisateur, des articles de presse récents sont recherchés en ligne (World News API)
+et fournis dans le contexte (« Articles de presse trouvés en ligne pour votre demande »).
+Tu DOIS t'appuyer en priorité sur ces sources pour répondre : cite les faits, titres et dates quand ils
+sont disponibles. Si le contexte est insuffisant, appelle l'outil rechercher_actualites avec une requête
+affinée (mots-clés précis tirés du message utilisateur).
+Réponds en français, de façon claire et professionnelle (listes à puces possibles).
+Ne invente pas d'articles absents du contexte ni de l'outil."""
 
 
 @dataclass
@@ -89,7 +92,11 @@ def build_chat_agent(
 
     @agent.tool
     async def rechercher_actualites(ctx: RunContext[ChatDeps], sujet: str) -> str:
-        """Recherche des articles d'actualité récents sur un sujet donné (API WorldNews)."""
+        """
+        Recherche des articles d'actualité récents sur un sujet (requête texte World News API).
+        Utilise cet outil pour compléter ou préciser la veille si le bloc d'articles déjà fourni
+        ne couvre pas l'angle demandé par l'utilisateur.
+        """
         key = ctx.deps.worldnews_api_key
         if not key:
             return (
@@ -121,6 +128,12 @@ async def run_agent_reply(
         prompt_parts.append("Articles déjà chargés pour cette discussion:\n" + articles_context.strip())
     if history_text.strip():
         prompt_parts.append("Historique récent:\n" + history_text.strip())
+    prompt_parts.append(
+        "Consigne: répondez en vous appuyant sur les articles de presse du contexte "
+        "(recherche en ligne déjà effectuée pour le message ci-dessous). "
+        "Appelez rechercher_actualites uniquement si vous avez besoin d'articles "
+        "complémentaires sur un sous-thème précis.\n"
+    )
     prompt_parts.append("Message utilisateur:\n" + user_message.strip())
     full_prompt = "\n\n".join(prompt_parts)
 

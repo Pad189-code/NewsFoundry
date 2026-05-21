@@ -51,6 +51,7 @@ def persist_fetched_articles_for_chat(chat_id: int, items: list[dict[str, Any]])
                         url=url,
                         source=item.get("source"),
                         summary=item.get("summary"),
+                        published_at=item.get("published_at"),
                     )
                 )
                 existing.add(url)

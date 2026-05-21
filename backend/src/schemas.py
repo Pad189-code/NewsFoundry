@@ -66,6 +66,12 @@ class NewsFetchRequest(BaseModel):
     text: str = "actualites"
 
 
+class BreakingNewsItemPublic(BaseModel):
+    title: str
+    summary: str
+    published_at: Optional[datetime] = None
+
+
 class ArticlePublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -74,6 +80,7 @@ class ArticlePublic(BaseModel):
     url: str
     source: Optional[str] = None
     summary: Optional[str] = None
+    published_at: Optional[datetime] = None
 
 
 class PressReviewCreate(BaseModel):

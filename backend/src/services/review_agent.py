@@ -21,6 +21,10 @@ class ArticleMentionOutput(BaseModel):
     """Synthèse d’un article ou d’un fil thématique mentionné dans la discussion."""
 
     article_title: str = Field(description="Titre court ou thème de la source / du point abordé")
+    publication_date: str | None = Field(
+        default=None,
+        description="Date de publication de l'article (JJ/MM/AAAA), si connue dans les sources",
+    )
     synthesis: str = Field(description="Synthèse en 2 à 5 phrases, en français, factuelle")
 
 
@@ -40,6 +44,8 @@ class PressReviewAgentOutput(BaseModel):
 REVIEW_AGENT_SYSTEM = """Tu es un rédacteur en chef spécialisé en revue de presse pour NewsFoundry.
 Ta tâche : produire une synthèse structurée à partir PRINCIPALEMENT de l’historique de discussion fourni.
 Des extraits d’articles peuvent compléter le contexte : ne les cite que s’ils apparaissent dans l’historique ou dans le bloc sources.
+Privilégie les informations les plus récentes. Pour chaque point lié à un article, renseigne publication_date (JJ/MM/AAAA) dès qu’elle figure dans les sources.
+Classe mentalement les articles du plus récent au plus ancien ; la liste articles_mentioned doit suivre cet ordre.
 Ignore totalement les messages d’erreur technique (ex. « Impossible d’appeler le modèle », OPENAI_API_KEY, ModelHTTPError) : ne les résume pas et ne les cite pas.
 Aucun outil n’est disponible. Ne fabrique pas de faits absents du matériel fourni.
 Réponds strictement via le schéma de sortie imposé (titre, synthèse générale, liste de points par article/thème)."""
@@ -144,7 +150,8 @@ def _fallback_output(topic: str, transcript: str, articles_rag: str) -> PressRev
 def format_review_markdown(out: PressReviewAgentOutput) -> str:
     lines = [f"# {out.title}\n", "## Synthèse générale\n\n", out.general_summary.strip(), "\n\n## Points par source ou thème\n"]
     for m in out.articles_mentioned:
-        lines.append(f"\n### {m.article_title}\n\n{m.synthesis.strip()}\n")
+        date_suffix = f" — publié le {m.publication_date}" if m.publication_date else ""
+        lines.append(f"\n### {m.article_title}{date_suffix}\n\n{m.synthesis.strip()}\n")
     return "".join(lines)
 
 
@@ -235,7 +242,13 @@ def _polish_review_output(out: PressReviewAgentOutput) -> PressReviewAgentOutput
         syn = _strip_noise_substrings(syn)
         if not syn:
             continue
-        cleaned_mentions.append(ArticleMentionOutput(article_title=m.article_title, synthesis=syn))
+        cleaned_mentions.append(
+            ArticleMentionOutput(
+                article_title=m.article_title,
+                publication_date=m.publication_date,
+                synthesis=syn,
+            )
+        )
     return PressReviewAgentOutput(
         title=title or out.title,
         general_summary=gs,

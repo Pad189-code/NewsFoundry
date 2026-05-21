@@ -15,7 +15,7 @@ def _rag_disabled() -> bool:
 
 def retrieve_review_context(
     topic: str,
-    articles: list[tuple[str, str, str | None]],
+    articles: list[tuple[str, str, str | None, str | None]],
 ) -> str:
     """
     Construit un bloc « sources » pour l’agent revue.
@@ -41,7 +41,7 @@ def retrieve_review_context(
 
 def _retrieve_with_llama_index(
     topic: str,
-    articles: list[tuple[str, str, str | None]],
+    articles: list[tuple[str, str, str | None, str | None]],
 ) -> str:
     from llama_index.core import Document, Settings, VectorStoreIndex
 
@@ -73,12 +73,16 @@ def _retrieve_with_llama_index(
         )
 
     documents: list[Document] = []
-    for title, summary, url in articles:
-        body = f"{title}\n\n{summary or '(Pas de résumé)'}\n\nURL: {url or 'n/a'}"
+    for title, summary, url, published in articles:
+        date_line = f"Date de publication : {published}\n\n" if published else ""
+        body = (
+            f"{title}\n\n{date_line}{summary or '(Pas de résumé)'}\n\n"
+            f"URL: {url or 'n/a'}"
+        )
         documents.append(
             Document(
                 text=body,
-                metadata={"title": title, "url": url or ""},
+                metadata={"title": title, "url": url or "", "published": published or ""},
             )
         )
 

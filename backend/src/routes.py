@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from sqlalchemy import func
+from sqlalchemy import func, nulls_last
 from models import Article, Chat, PressReview, User
 from sqlmodel import Session, desc, select
 
@@ -18,6 +19,7 @@ from database import get_session
 from rate_limit import limiter
 from schemas import (
     ArticlePublic,
+    BreakingNewsItemPublic,
     ChatCreate,
     ChatDetailPublic,
     ChatListPublic,
@@ -32,16 +34,62 @@ from schemas import (
     UserPublic,
 )
 from services.chat_agent import SYSTEM_PROMPT_BASE, run_agent_reply
+from services.chat_live_search import search_press_articles_for_message
 from services.news import (
     fetch_worldnews_articles,
     fetch_worldnews_top_news,
+    format_breaking_news_welcome,
     format_top_news_for_system_prompt,
     worldnews_api_key,
 )
+from services.article_tool_persist import persist_fetched_articles_for_chat
 from services.review_agent import format_review_markdown, run_press_review_structured
 from services.review_rag import retrieve_review_context
 
 router = APIRouter()
+
+
+def _article_recency_key(article: Article) -> datetime:
+    return article.published_at or article.created_at
+
+
+def _sort_articles_by_recency(rows: list[Article]) -> list[Article]:
+    return sorted(rows, key=_article_recency_key, reverse=True)
+
+
+def _format_fr_publication(dt: datetime | None) -> str | None:
+    if dt is None:
+        return None
+    aware = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    return aware.strftime("%d/%m/%Y")
+
+
+def _parse_fr_publication_label(label: str | None) -> datetime | None:
+    if not label or not str(label).strip():
+        return None
+    s = str(label).strip()
+    for fmt in ("%d/%m/%Y %H:%M", "%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(s, fmt)
+            return dt.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _sort_breakdown_by_publication_date(
+    breakdown: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    def _key(item: dict[str, Any]) -> float:
+        raw = item.get("publication_date")
+        dt = _parse_fr_publication_label(str(raw)) if raw else None
+        return dt.timestamp() if dt else 0.0
+
+    return sorted(breakdown, key=_key, reverse=True)
 
 
 def _press_review_to_public(
@@ -160,6 +208,36 @@ def read_me(current: User = Depends(get_current_user)) -> UserPublic:
     return UserPublic.model_validate(current)
 
 
+@router.get("/news/breaking", response_model=list[BreakingNewsItemPublic])
+async def get_breaking_news(
+    current: User = Depends(get_current_user),
+) -> list[BreakingNewsItemPublic]:
+    """Dernières actualités (top-news) pour l’écran d’accueil du chat."""
+    _ = current
+    key = worldnews_api_key()
+    if not key:
+        raise HTTPException(
+            status_code=503,
+            detail="WORLDNEWS_API_KEY manquante sur le serveur",
+        )
+    items = await fetch_worldnews_top_news(api_key=key)
+    out: list[BreakingNewsItemPublic] = []
+    for raw in items:
+        title = str(raw.get("title") or "").strip()
+        if not title:
+            continue
+        pub = raw.get("published_at")
+        published = pub if isinstance(pub, datetime) else None
+        out.append(
+            BreakingNewsItemPublic(
+                title=title,
+                summary=str(raw.get("summary") or "").strip(),
+                published_at=published,
+            )
+        )
+    return out
+
+
 def _chat_or_404(session: Session, user_id: int, chat_id: int) -> Chat:
     chat = session.get(Chat, chat_id)
     if not chat or chat.user_id != user_id:
@@ -194,12 +272,25 @@ async def _ensure_chat_system_prompt_saved(session: Session, chat: Chat) -> None
 
 
 def _articles_as_text(session: Session, chat_id: int) -> str:
-    statement = select(Article).where(Article.chat_id == chat_id)
-    rows = session.exec(statement).all()
+    statement = (
+        select(Article)
+        .where(Article.chat_id == chat_id)
+        .order_by(nulls_last(desc(Article.published_at)), desc(Article.created_at))
+    )
+    rows = list(session.exec(statement).all())
     parts: list[str] = []
     for a in rows:
+        pub = ""
+        if a.published_at:
+            aware = (
+                a.published_at
+                if a.published_at.tzinfo
+                else a.published_at.replace(tzinfo=timezone.utc)
+            )
+            pub = f" — publié le {aware.strftime('%d/%m/%Y')}"
         parts.append(
-            f"- {a.title} ({a.source or 'source inconnue'})\n  {a.summary or ''}\n  {a.url}"
+            f"- {a.title}{pub} ({a.source or 'source inconnue'})\n"
+            f"  {a.summary or ''}\n  {a.url}"
         )
     return "\n".join(parts)
 
@@ -311,13 +402,26 @@ async def append_message(
     session.refresh(chat)
 
     history = _messages_as_text(msgs, limit=25)
-    articles_block = _articles_as_text(session, chat_id)
 
     await _ensure_chat_system_prompt_saved(session, chat)
     session.refresh(chat)
 
+    user_text = payload.content.strip()
+    live_tool_text, _live_items = await search_press_articles_for_message(
+        chat_id, user_text
+    )
+    articles_block = _articles_as_text(session, chat_id)
+    if live_tool_text.strip():
+        articles_block = (
+            "### Articles de presse trouvés en ligne pour votre demande "
+            f"(recherche : « {user_text[:120]} »)\n\n"
+            f"{live_tool_text.strip()}\n\n"
+            "### Autres articles déjà chargés dans cette discussion\n\n"
+            f"{articles_block or '(aucun autre)'}"
+        )
+
     assistant_text = await run_agent_reply(
-        user_message=payload.content.strip(),
+        user_message=user_text,
         history_text=history,
         articles_context=articles_block,
         worldnews_api_key=worldnews_api_key(),
@@ -340,6 +444,54 @@ async def append_message(
         short = payload.content.strip().replace("\n", " ")[:60]
         chat.title = short + ("…" if len(payload.content.strip()) > 60 else "")
 
+    session.add(chat)
+    session.commit()
+    session.refresh(chat)
+    return _message_dict_to_public(assistant_entry)
+
+
+@router.post("/chats/{chat_id}/bootstrap-welcome", response_model=MessagePublic)
+async def bootstrap_chat_welcome(
+    chat_id: int,
+    session: Session = Depends(get_session),
+    current: User = Depends(get_current_user),
+) -> MessagePublic:
+    """
+    Discussion vide : charge des articles récents et publie un message d’accueil
+    (breaking news) pour démarrer le chat interactif.
+    """
+    chat = _chat_or_404(session, current.id, chat_id)
+    msgs = _coerce_messages_list(chat.messages_json)
+    if msgs:
+        return _message_dict_to_public(msgs[-1])
+
+    key = worldnews_api_key()
+    top_items: list[dict[str, Any]] = []
+    if key:
+        try:
+            top_items = await fetch_worldnews_top_news(api_key=key)
+            search_items = await fetch_worldnews_articles(
+                api_key=key, text="actualites", number=8
+            )
+            persist_fetched_articles_for_chat(chat_id, search_items)
+        except HTTPException:
+            raise
+        except Exception:
+            top_items = top_items or []
+
+    await _ensure_chat_system_prompt_saved(session, chat)
+    session.refresh(chat)
+
+    welcome = format_breaking_news_welcome(top_items)
+    now = datetime.now(timezone.utc)
+    assistant_entry = {
+        "id": 1,
+        "role": "assistant",
+        "content": welcome,
+        "created_at": now.isoformat(),
+    }
+    chat.messages_json = [assistant_entry]
+    chat.updated_at = now
     session.add(chat)
     session.commit()
     session.refresh(chat)
@@ -378,6 +530,7 @@ async def fetch_news_for_chat(
             url=url,
             source=item.get("source"),
             summary=item.get("summary"),
+            published_at=item.get("published_at"),
         )
         session.add(art)
         created.append(art)
@@ -395,7 +548,7 @@ async def fetch_news_for_chat(
     session.commit()
     for art in created:
         session.refresh(art)
-    return created
+    return _sort_articles_by_recency(created)
 
 
 @router.get("/chats/{chat_id}/articles", response_model=list[ArticlePublic])
@@ -408,7 +561,7 @@ def list_articles(
     statement = (
         select(Article)
         .where(Article.chat_id == chat_id)
-        .order_by(desc(Article.created_at))
+        .order_by(nulls_last(desc(Article.published_at)), desc(Article.created_at))
     )
     return list(session.exec(statement).all())
 
@@ -456,22 +609,31 @@ async def create_review(
     session: Session = Depends(get_session),
     current: User = Depends(get_current_user),
 ) -> PressReviewPublic:
+    """
+    Génère une revue de presse sur le thème demandé à partir des articles déjà
+    chargés dans la discussion et de l’historique du chat, puis la persiste
+    (table ``pressreview`` + aperçu sur ``chat``).
+    """
     chat = _chat_or_404(session, current.id, chat_id)
 
     msgs = _coerce_messages_list(chat.messages_json)
     transcript = _messages_as_text(msgs, limit=120)
 
     statement = select(Article).where(Article.chat_id == chat_id)
-    articles_rows = list(session.exec(statement).all())
+    articles_rows = _sort_articles_by_recency(list(session.exec(statement).all()))
 
     if not transcript.strip() and not articles_rows:
         raise HTTPException(
             status_code=400,
             detail="Aucun message dans la discussion ni article chargé. "
-            "Échangez dans le chat ou chargez des articles (news/fetch), puis réessayez.",
+            "Affinez votre veille dans le chat (les recherches d’articles y sont "
+            "enregistrées), puis relancez la génération de revue.",
         )
 
-    articles_tuples = [(a.title, a.summary or "", a.url) for a in articles_rows]
+    articles_tuples = [
+        (a.title, a.summary or "", a.url, _format_fr_publication(a.published_at))
+        for a in articles_rows
+    ]
     articles_rag = (
         retrieve_review_context(payload.topic.strip(), articles_tuples)
         if articles_tuples
@@ -484,7 +646,8 @@ async def create_review(
         articles_rag=articles_rag,
     )
     content = format_review_markdown(structured)
-    breakdown = [m.model_dump() for m in structured.articles_mentioned]
+    breakdown: list[dict[str, Any]] = [m.model_dump() for m in structured.articles_mentioned]
+    breakdown = _sort_breakdown_by_publication_date(breakdown)
 
     review = PressReview(
         user_id=current.id,

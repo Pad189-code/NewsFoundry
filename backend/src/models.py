@@ -49,6 +49,7 @@ class Article(SQLModel, table=True):
     url: str
     source: Optional[str] = None
     summary: Optional[str] = None
+    published_at: Optional[datetime] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utcnow)
 
 

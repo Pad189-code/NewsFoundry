@@ -51,6 +51,21 @@ export type MessageDTO = {
   created_at: string;
 };
 
+export type ArticleDTO = {
+  id: number;
+  title: string;
+  url: string;
+  source?: string | null;
+  summary?: string | null;
+  published_at?: string | null;
+};
+
+export type BreakingNewsDTO = {
+  title: string;
+  summary: string;
+  published_at?: string | null;
+};
+
 export type PressReviewDTO = {
   id: number;
   chat_id: number;
@@ -60,7 +75,11 @@ export type PressReviewDTO = {
   chat_title?: string | null;
   review_title?: string | null;
   general_summary?: string | null;
-  articles_breakdown?: { article_title: string; synthesis: string }[] | null;
+  articles_breakdown?: {
+    article_title: string;
+    synthesis: string;
+    publication_date?: string | null;
+  }[] | null;
 };
 
 export type LoginTokens = {
@@ -327,7 +346,7 @@ export async function sendMessage(
 export async function fetchBreakingNews(
   chatId: number,
   text = "actualites",
-): Promise<void> {
+): Promise<ArticleDTO[]> {
   const response = await withAuthRetry((access) =>
     networkFetch(`${API_BASE_URL}/chats/${chatId}/news/fetch`, {
       method: "POST",
@@ -338,6 +357,44 @@ export async function fetchBreakingNews(
   if (!response.ok) {
     throw new Error(await parseApiError(response));
   }
+  return (await response.json()) as ArticleDTO[];
+}
+
+export async function getBreakingNewsPreview(): Promise<BreakingNewsDTO[]> {
+  const response = await withAuthRetry((access) =>
+    networkFetch(`${API_BASE_URL}/news/breaking`, {
+      headers: authHeaders(access),
+    }),
+  );
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  return (await response.json()) as BreakingNewsDTO[];
+}
+
+export async function bootstrapChatWelcome(chatId: number): Promise<MessageDTO> {
+  const response = await withAuthRetry((access) =>
+    networkFetch(`${API_BASE_URL}/chats/${chatId}/bootstrap-welcome`, {
+      method: "POST",
+      headers: authHeaders(access),
+    }),
+  );
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  return (await response.json()) as MessageDTO;
+}
+
+export async function listArticles(chatId: number): Promise<ArticleDTO[]> {
+  const response = await withAuthRetry((access) =>
+    networkFetch(`${API_BASE_URL}/chats/${chatId}/articles`, {
+      headers: authHeaders(access),
+    }),
+  );
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  return (await response.json()) as ArticleDTO[];
 }
 
 export async function listReviews(chatId: number): Promise<PressReviewDTO[]> {
@@ -352,7 +409,6 @@ export async function listReviews(chatId: number): Promise<PressReviewDTO[]> {
   return (await response.json()) as PressReviewDTO[];
 }
 
-/** Toutes les revues de l’utilisateur (toutes discussions). */
 export async function listAllPressReviews(): Promise<PressReviewDTO[]> {
   const response = await withAuthRetry((access) =>
     networkFetch(`${API_BASE_URL}/reviews`, {
