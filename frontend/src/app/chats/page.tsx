@@ -35,6 +35,10 @@ import { ChatMessageBubble } from "@/components/ChatMessageBubble";
 import { ChatMarkdown } from "@/components/ChatMarkdown";
 import { PressReviewModal } from "@/components/PressReviewModal";
 import { clearSession, getStoredEmail, isAuthenticated } from "@/lib/auth";
+import {
+  copyTextToClipboard,
+  formatPressReviewForClipboard,
+} from "@/lib/pressReviewCopy";
 
 type ViewMode = "home" | "chat" | "review";
 
@@ -123,6 +127,7 @@ function ChatsPageContent() {
   const [allPressReviews, setAllPressReviews] = useState<PressReviewDTO[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copiedReviewId, setCopiedReviewId] = useState<number | null>(null);
   const autoNewsAttempted = useRef<Set<number>>(new Set());
   const welcomeBootstrapped = useRef<Set<number>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -529,12 +534,20 @@ function ChatsPageContent() {
     }
   }
 
-  async function handleCopyReview(content: string) {
-    try {
-      await navigator.clipboard.writeText(content);
-    } catch {
-      setError("Copie impossible dans le presse-papiers.");
+  async function handleCopyReview(review: PressReviewDTO) {
+    const text = formatPressReviewForClipboard(review);
+    const ok = await copyTextToClipboard(text);
+    if (ok) {
+      setCopiedReviewId(review.id);
+      setError(null);
+      window.setTimeout(() => {
+        setCopiedReviewId((current) =>
+          current === review.id ? null : current,
+        );
+      }, 2000);
+      return;
     }
+    setError("Copie impossible dans le presse-papiers.");
   }
 
   if (!authState.ready || !authState.authenticated) {
@@ -792,10 +805,15 @@ function ChatsPageContent() {
                         </div>
                         <button
                           type="button"
-                          className="shrink-0 self-start rounded-md bg-[#282833] px-4 py-2 text-xs text-white hover:bg-[#1a1a24]"
-                          onClick={() => void handleCopyReview(review.content)}
+                          className="shrink-0 self-start rounded-md bg-[#282833] px-4 py-2 text-xs text-white hover:bg-[#1a1a24] disabled:opacity-70"
+                          aria-label={
+                            copiedReviewId === review.id
+                              ? "Revue copiée dans le presse-papiers"
+                              : "Copier la revue de presse"
+                          }
+                          onClick={() => void handleCopyReview(review)}
                         >
-                          Copier
+                          {copiedReviewId === review.id ? "Copié !" : "Copier"}
                         </button>
                       </div>
                       <div className="text-sm leading-relaxed text-slate-700 break-words">
