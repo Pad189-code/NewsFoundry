@@ -13,7 +13,7 @@ defaults:
     working-directory: backend
 
 env:
-  RAILWAY_GRAPHQL_URL: https://api.railway.app/graphql
+  RAILWAY_GRAPHQL_URL: https://backboard.railway.com/graphql/v2
   RAILWAY_SERVICE_ID: 63e2eca5-d394-4428-9c0e-7830eb031f0d
 
 jobs:
@@ -79,7 +79,7 @@ jobs:
             RESOLVE_PAYLOAD=$(jq -n \
               --arg serviceId "$RAILWAY_SERVICE_ID" \
               '{
-                query: "query($serviceId: String!) { service(id: $serviceId) { name serviceInstances { edges { node { environmentId environment { name } } } } } } }",
+                query: "query(\$serviceId: String!) { service(id: \$serviceId) { name serviceInstances { edges { node { environmentId environment { name } } } } } } }",
                 variables: { serviceId: $serviceId }
               }')
             RESOLVE_RESPONSE=$(graphql "$RESOLVE_PAYLOAD") || {
@@ -110,7 +110,7 @@ jobs:
             --arg environmentId "$ENV_ID" \
             --arg commitSha "$GITHUB_SHA" \
             '{
-              query: "mutation Deploy($serviceId: String!, $environmentId: String!, $commitSha: String!) { serviceInstanceDeployV2(serviceId: $serviceId, environmentId: $environmentId, commitSha: $commitSha) }",
+              query: "mutation Deploy(\$serviceId: String!, \$environmentId: String!, \$commitSha: String!) { serviceInstanceDeployV2(serviceId: \$serviceId, environmentId: \$environmentId, commitSha: \$commitSha) { id status } }",
               variables: {
                 serviceId: $serviceId,
                 environmentId: $environmentId,
@@ -130,7 +130,7 @@ jobs:
             exit 1
           fi
 
-          DEPLOYMENT_ID=$(echo "$DEPLOY_RESPONSE" | jq -r '.data.serviceInstanceDeployV2 // empty')
+          DEPLOYMENT_ID=$(echo "$DEPLOY_RESPONSE" | jq -r '.data.serviceInstanceDeployV2.id // empty')
           if [ -n "$DEPLOYMENT_ID" ]; then
             echo "deployment_id=$DEPLOYMENT_ID" >> "$GITHUB_OUTPUT"
             echo "Déploiement créé : $DEPLOYMENT_ID"
@@ -158,7 +158,7 @@ jobs:
             local id="$1"
             local payload
             payload=$(jq -n --arg id "$id" '{
-              query: "query($id: String!) { deployment(id: $id) { id status staticUrl } }",
+              query: "query(\$id: String!) { deployment(id: \$id) { id status staticUrl } }",
               variables: { id: $id }
             }')
             graphql "$payload"
@@ -170,7 +170,7 @@ jobs:
               --arg serviceId "$RAILWAY_SERVICE_ID" \
               --arg environmentId "$ENV_ID" \
               '{
-                query: "query($serviceId: String!, $environmentId: String!) { deployments(first: 1, input: { serviceId: $serviceId, environmentId: $environmentId }) { edges { node { id status staticUrl } } } }",
+                query: "query(\$serviceId: String!, \$environmentId: String!) { deployments(first: 1, input: { serviceId: \$serviceId, environmentId: \$environmentId }) { edges { node { id status staticUrl } } } }",
                 variables: { serviceId: $serviceId, environmentId: $environmentId }
               }')
             graphql "$payload"
