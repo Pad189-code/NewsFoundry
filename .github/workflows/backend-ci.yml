@@ -1,16 +1,16 @@
-name: Backend CI and Deploy
+name: Backend CI
 
 on:
   push:
   pull_request:
-  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: backend
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
     steps:
       - uses: actions/checkout@v4
 
@@ -28,41 +28,3 @@ jobs:
           DISABLE_RATE_LIMIT: "1"
           JWT_SECRET: "github-actions-ci-jwt-secret-at-least-32-chars!!"
         run: uv run pytest -q
-
-  deploy:
-    name: Deploy to Railway
-    runs-on: ubuntu-latest
-    needs: test
-    if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      github.event_name == 'workflow_dispatch'
-    container: ghcr.io/railwayapp/cli:latest
-    env:
-      # Project Token (pas un token compte) : Railway → Projet → Settings → Tokens
-      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-      # Nom affiché sur la carte du service (ex. newsfoundry-api), pas l'UUID
-      RAILWAY_SERVICE: ${{ secrets.RAILWAY_SERVICE_NAME }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Deploy service
-        run: railway up --ci --detach --service="${RAILWAY_SERVICE}"
-
-  verify:
-    name: Verify production API
-    runs-on: ubuntu-latest
-    needs: test
-    if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      github.event_name == 'workflow_dispatch'
-    steps:
-      - name: Health check
-        run: |
-          for i in 1 2 3 4 5 6; do
-            if curl -fsS "https://newsfoundry-api-production.up.railway.app/health"; then
-              exit 0
-            fi
-            echo "Waiting for API... ($i/6)"
-            sleep 20
-          done
-          echo "API health check failed"
-          exit 1
