@@ -13,7 +13,7 @@ defaults:
     working-directory: backend
 
 env:
-  RAILWAY_GRAPHQL_URL: https://backboard.railway.com/graphql/v2
+  RAILWAY_GRAPHQL_URL: https://api.railway.app/graphql
   RAILWAY_SERVICE_ID: 63e2eca5-d394-4428-9c0e-7830eb031f0d
 
 jobs:
@@ -54,22 +54,31 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Validation du token
           if [ -z "${RAILWAY_TOKEN:-}" ]; then
-            echo "::error::Secret RAILWAY_TOKEN manquant. Créez un token projet : Railway → Projet → Settings → Tokens."
+            echo "::error::Secret RAILWAY_TOKEN manquant."
+            echo "Créez un token projet : Railway → Projet → Settings → Tokens"
             exit 1
           fi
 
+          # Fonction pour appeler GraphQL
           graphql() {
             local payload="$1"
+            echo "DEBUG: Appel GraphQL vers $RAILWAY_GRAPHQL_URL"
             curl -fsS -X POST "$RAILWAY_GRAPHQL_URL" \
               -H "Authorization: Bearer $RAILWAY_TOKEN" \
               -H "Content-Type: application/json" \
-              -d "$payload"
+              -d "$payload" || {
+              echo "::error::Impossible de contacter l'API Railway."
+              echo "Vérifiez : URL ($RAILWAY_GRAPHQL_URL), token, et connectivité réseau."
+              exit 1
+            }
           }
 
           echo "Commit à déployer : ${GITHUB_SHA}"
           echo "Service Railway : $RAILWAY_SERVICE_ID"
 
+          # Résolution de l'Environment ID
           if [ -n "${RAILWAY_ENVIRONMENT_ID:-}" ]; then
             ENV_ID="$RAILWAY_ENVIRONMENT_ID"
             echo "Environment ID (secret) : $ENV_ID"
@@ -78,32 +87,38 @@ jobs:
             RESOLVE_PAYLOAD=$(jq -n \
               --arg serviceId "$RAILWAY_SERVICE_ID" \
               '{
-                query: "query($serviceId: String!) { service(id: $serviceId) { name serviceInstances { edges { node { environmentId environment { name } } } } } } }",
+                query: "query($serviceId: String!) { service(id: $serviceId) { name serviceInstances { edges { node { environmentId environment { name } } } } } }",
                 variables: { serviceId: $serviceId }
               }')
-            RESOLVE_RESPONSE=$(graphql "$RESOLVE_PAYLOAD") || {
-              echo "::error::Impossible de contacter l'API Railway ($RAILWAY_GRAPHQL_URL)."
-              exit 1
-            }
+            
+            echo "DEBUG: Payload de résolution : $RESOLVE_PAYLOAD"
+            RESOLVE_RESPONSE=$(graphql "$RESOLVE_PAYLOAD")
+            echo "DEBUG: Réponse de résolution : $RESOLVE_RESPONSE"
             echo "$RESOLVE_RESPONSE" | jq .
+            
             if echo "$RESOLVE_RESPONSE" | jq -e '.errors | length > 0' >/dev/null 2>&1; then
               echo "::error::Erreur GraphQL lors de la résolution de l'environnement."
+              echo "$RESOLVE_RESPONSE" | jq '.errors'
               exit 1
             fi
+            
             ENV_ID=$(echo "$RESOLVE_RESPONSE" | jq -r '
               .data.service.serviceInstances.edges
               | map(.node)
               | (map(select(.environment.name == "production"))[0] // .[0])
               | .environmentId // empty
             ')
+            
             if [ -z "$ENV_ID" ]; then
-              echo "::error::Aucun environmentId trouvé. Ajoutez le secret RAILWAY_ENVIRONMENT_ID (Cmd+K → Copy Environment ID dans Railway)."
+              echo "::error::Aucun environmentId trouvé."
+              echo "Ajoutez le secret RAILWAY_ENVIRONMENT_ID (Cmd+K → Copy Environment ID dans Railway)."
               exit 1
             fi
             echo "Environment ID (auto) : $ENV_ID"
           fi
           echo "environment_id=$ENV_ID" >> "$GITHUB_OUTPUT"
 
+          # Déploiement
           DEPLOY_PAYLOAD=$(jq -n \
             --arg serviceId "$RAILWAY_SERVICE_ID" \
             --arg environmentId "$ENV_ID" \
@@ -117,15 +132,15 @@ jobs:
               }
             }')
 
+          echo "DEBUG: Payload de déploiement : $DEPLOY_PAYLOAD"
           echo "Déclenchement serviceInstanceDeployV2…"
-          DEPLOY_RESPONSE=$(graphql "$DEPLOY_PAYLOAD") || {
-            echo "::error::Échec HTTP lors du déploiement Railway."
-            exit 1
-          }
+          DEPLOY_RESPONSE=$(graphql "$DEPLOY_PAYLOAD")
+          echo "DEBUG: Réponse de déploiement : $DEPLOY_RESPONSE"
           echo "$DEPLOY_RESPONSE" | jq .
 
           if echo "$DEPLOY_RESPONSE" | jq -e '.errors | length > 0' >/dev/null 2>&1; then
-            echo "::error::Mutation serviceInstanceDeployV2 refusée : $(echo "$DEPLOY_RESPONSE" | jq -c '.errors')"
+            echo "::error::Mutation serviceInstanceDeployV2 refusée."
+            echo "$DEPLOY_RESPONSE" | jq '.errors'
             exit 1
           fi
 
@@ -134,7 +149,7 @@ jobs:
             echo "deployment_id=$DEPLOYMENT_ID" >> "$GITHUB_OUTPUT"
             echo "Déploiement créé : $DEPLOYMENT_ID"
           else
-            echo "Déploiement déclenché (ID non renvoyé par l'API, suivi via la liste des deployments)."
+            echo "Déploiement déclenché (ID non renvoyé par l'API)."
           fi
 
       - name: Wait for Railway deployment
@@ -191,11 +206,12 @@ jobs:
 
             case "$STATUS" in
               SUCCESS)
-                echo "Déploiement Railway réussi."
+                echo "✅ Déploiement Railway réussi."
                 exit 0
                 ;;
               FAILED|CRASHED|REMOVED)
-                echo "::error::Déploiement Railway en échec (status=$STATUS). Voir le dashboard Railway → NewsFoundry-api."
+                echo "::error::Déploiement Railway en échec (status=$STATUS)."
+                echo "Voir le dashboard Railway → NewsFoundry-api."
                 echo "$RESPONSE" | jq .
                 exit 1
                 ;;
@@ -214,4 +230,10 @@ jobs:
       - name: Notify deployment failure
         if: failure()
         run: |
-          echo "::error::Pipeline deploy échoué pour ${GITHUB_SHA} sur main. Vérifiez RAILWAY_TOKEN (token projet), RAILWAY_ENVIRONMENT_ID, et que le dépôt GitHub est bien connecté au service NewsFoundry-api."
+          echo "::error::Pipeline deploy échoué pour ${GITHUB_SHA} sur main."
+          echo "Vérifiez :"
+          echo "  1. RAILWAY_TOKEN (token projet, pas personnel)"
+          echo "  2. RAILWAY_ENVIRONMENT_ID (optionnel mais recommandé)"
+          echo "  3. Que le dépôt GitHub est bien connecté au service NewsFoundry-api"
+          echo "  4. Les logs ci-dessus pour les erreurs GraphQL"
+
