@@ -78,10 +78,8 @@ jobs:
             echo "RAILWAY_ENVIRONMENT_ID absent — résolution via l'API…"
             RESOLVE_PAYLOAD=$(jq -n \
               --arg serviceId "$RAILWAY_SERVICE_ID" \
-              '{
-                query: "query(\$serviceId: String!) { service(id: \$serviceId) { name serviceInstances { edges { node { environmentId environment { name } } } } } } }",
-                variables: { serviceId: $serviceId }
-              }')
+              --arg query 'query($serviceId: String!) { service(id: $serviceId) { name serviceInstances { edges { node { environmentId environment { name } } } } } } }' \
+              '{ query: $query, variables: { serviceId: $serviceId } }')
             RESOLVE_RESPONSE=$(graphql "$RESOLVE_PAYLOAD") || {
               echo "::error::Impossible de contacter l'API Railway ($RAILWAY_GRAPHQL_URL)."
               exit 1
@@ -109,8 +107,9 @@ jobs:
             --arg serviceId "$RAILWAY_SERVICE_ID" \
             --arg environmentId "$ENV_ID" \
             --arg commitSha "$GITHUB_SHA" \
+            --arg query 'mutation Deploy($serviceId: String!, $environmentId: String!, $commitSha: String!) { serviceInstanceDeployV2(serviceId: $serviceId, environmentId: $environmentId, commitSha: $commitSha) { id status } }' \
             '{
-              query: "mutation Deploy(\$serviceId: String!, \$environmentId: String!, \$commitSha: String!) { serviceInstanceDeployV2(serviceId: \$serviceId, environmentId: \$environmentId, commitSha: \$commitSha) { id status } }",
+              query: $query,
               variables: {
                 serviceId: $serviceId,
                 environmentId: $environmentId,
@@ -157,10 +156,10 @@ jobs:
           poll_by_deployment_id() {
             local id="$1"
             local payload
-            payload=$(jq -n --arg id "$id" '{
-              query: "query(\$id: String!) { deployment(id: \$id) { id status staticUrl } }",
-              variables: { id: $id }
-            }')
+            payload=$(jq -n \
+              --arg id "$id" \
+              --arg query 'query($id: String!) { deployment(id: $id) { id status staticUrl } }' \
+              '{ query: $query, variables: { id: $id } }')
             graphql "$payload"
           }
 
@@ -169,10 +168,8 @@ jobs:
             payload=$(jq -n \
               --arg serviceId "$RAILWAY_SERVICE_ID" \
               --arg environmentId "$ENV_ID" \
-              '{
-                query: "query(\$serviceId: String!, \$environmentId: String!) { deployments(first: 1, input: { serviceId: \$serviceId, environmentId: \$environmentId }) { edges { node { id status staticUrl } } } }",
-                variables: { serviceId: $serviceId, environmentId: $environmentId }
-              }')
+              --arg query 'query($serviceId: String!, $environmentId: String!) { deployments(first: 1, input: { serviceId: $serviceId, environmentId: $environmentId }) { edges { node { id status staticUrl } } } }' \
+              '{ query: $query, variables: { serviceId: $serviceId, environmentId: $environmentId } }')
             graphql "$payload"
           }
 
