@@ -62,10 +62,19 @@ jobs:
 
           graphql() {
             local payload="$1"
-            curl -fsS -X POST "$RAILWAY_GRAPHQL_URL" \
+            local raw http_code body
+            raw=$(curl -sS -w "\n%{http_code}" -X POST "$RAILWAY_GRAPHQL_URL" \
               -H "Authorization: Bearer $RAILWAY_TOKEN" \
               -H "Content-Type: application/json" \
-              -d "$payload"
+              -d "$payload")
+            http_code=$(echo "$raw" | tail -n1)
+            body=$(echo "$raw" | sed '$d')
+            if [ "$http_code" -ge 400 ]; then
+              echo "::error::Railway API HTTP $http_code"
+              echo "$body" | jq . 2>/dev/null || echo "$body"
+              return 1
+            fi
+            echo "$body"
           }
 
           echo "Commit à déployer : ${GITHUB_SHA}"
@@ -80,6 +89,9 @@ jobs:
               --arg serviceId "$RAILWAY_SERVICE_ID" \
               --arg query 'query($serviceId: String!) { service(id: $serviceId) { name serviceInstances { edges { node { environmentId environment { name } } } } } } }' \
               '{ query: $query, variables: { serviceId: $serviceId } }')
+            echo "::group::Resolve environment GraphQL payload"
+            echo "$RESOLVE_PAYLOAD" | jq .
+            echo "::endgroup::"
             RESOLVE_RESPONSE=$(graphql "$RESOLVE_PAYLOAD") || {
               echo "::error::Impossible de contacter l'API Railway ($RAILWAY_GRAPHQL_URL)."
               exit 1
@@ -107,7 +119,7 @@ jobs:
             --arg serviceId "$RAILWAY_SERVICE_ID" \
             --arg environmentId "$ENV_ID" \
             --arg commitSha "$GITHUB_SHA" \
-            --arg query 'mutation Deploy($serviceId: String!, $environmentId: String!, $commitSha: String!) { serviceInstanceDeployV2(serviceId: $serviceId, environmentId: $environmentId, commitSha: $commitSha) { id status } }' \
+            --arg query 'mutation Deploy($serviceId: String!, $environmentId: String!, $commitSha: String) { serviceInstanceDeployV2(serviceId: $serviceId, environmentId: $environmentId, commitSha: $commitSha) }' \
             '{
               query: $query,
               variables: {
@@ -117,6 +129,9 @@ jobs:
               }
             }')
 
+          echo "::group::Deploy GraphQL payload"
+          echo "$DEPLOY_PAYLOAD" | jq .
+          echo "::endgroup::"
           echo "Déclenchement serviceInstanceDeployV2…"
           DEPLOY_RESPONSE=$(graphql "$DEPLOY_PAYLOAD") || {
             echo "::error::Échec HTTP lors du déploiement Railway."
@@ -129,7 +144,7 @@ jobs:
             exit 1
           fi
 
-          DEPLOYMENT_ID=$(echo "$DEPLOY_RESPONSE" | jq -r '.data.serviceInstanceDeployV2.id // empty')
+          DEPLOYMENT_ID=$(echo "$DEPLOY_RESPONSE" | jq -r '.data.serviceInstanceDeployV2 // empty')
           if [ -n "$DEPLOYMENT_ID" ]; then
             echo "deployment_id=$DEPLOYMENT_ID" >> "$GITHUB_OUTPUT"
             echo "Déploiement créé : $DEPLOYMENT_ID"
@@ -147,10 +162,19 @@ jobs:
 
           graphql() {
             local payload="$1"
-            curl -fsS -X POST "$RAILWAY_GRAPHQL_URL" \
+            local raw http_code body
+            raw=$(curl -sS -w "\n%{http_code}" -X POST "$RAILWAY_GRAPHQL_URL" \
               -H "Authorization: Bearer $RAILWAY_TOKEN" \
               -H "Content-Type: application/json" \
-              -d "$payload"
+              -d "$payload")
+            http_code=$(echo "$raw" | tail -n1)
+            body=$(echo "$raw" | sed '$d')
+            if [ "$http_code" -ge 400 ]; then
+              echo "::error::Railway API HTTP $http_code"
+              echo "$body" | jq . 2>/dev/null || echo "$body"
+              return 1
+            fi
+            echo "$body"
           }
 
           poll_by_deployment_id() {
