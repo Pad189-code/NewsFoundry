@@ -8,10 +8,6 @@ concurrency:
   group: backend-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-defaults:
-  run:
-    working-directory: backend
-
 env:
   RAILWAY_GRAPHQL_URL: https://api.railway.app/graphq1
   RAILWAY_SERVICE_ID: 63e2eca5-d394-4428-9c0e-7830eb031f0d
@@ -19,6 +15,9 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v6
 
@@ -113,6 +112,7 @@ jobs:
             fi
             echo "Environment ID (auto) : $ENV_ID"
           fi
+
           echo "environment_id=$ENV_ID" >> "$GITHUB_OUTPUT"
 
           DEPLOY_PAYLOAD=$(jq -n \
