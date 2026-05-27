@@ -18,6 +18,17 @@ Les fonctionnalités centrées sur l’IA reposent sur :
 - **World News API** pour l’actualité (top-news dans le prompt système, search-news via un outil du chat) ;
 - **LlamaIndex** (optionnel) pour un **RAG en mémoire** lors de la génération de revue de presse, afin de sélectionner les articles les plus pertinents pour le sujet choisi.
 
+### Application déployée (production)
+
+| Composant | URL |
+|-----------|-----|
+| **Site web (frontend Vercel)** | [https://news-foundry-nvpt-git-main-pad189-codes-projects.vercel.app/](https://news-foundry-nvpt-git-main-pad189-codes-projects.vercel.app/) |
+| **API backend (Railway)** | [https://newsfoundry-api-production.up.railway.app](https://newsfoundry-api-production.up.railway.app) |
+| **Documentation OpenAPI** | [https://newsfoundry-api-production.up.railway.app/docs](https://newsfoundry-api-production.up.railway.app/docs) |
+| **Santé API** | `GET https://newsfoundry-api-production.up.railway.app/health` |
+
+Le frontend en production consomme l’API Railway via la variable Vercel **`NEXT_PUBLIC_API_URL`**. Le backend autorise l’origine du site Vercel via **`CORS_ORIGINS`** (ou le mode CORS relaxed sur Railway). Détail des variables et du flux de déploiement : **`docs/DEPLOIEMENT.md`**.
+
 ---
 
 ## 2. Structure des dossiers (racine du dépôt)
@@ -151,12 +162,45 @@ Les fichiers **`.env.example`** (`backend/`, `frontend/`) listent les variables.
 
 ---
 
-## 8. Documentation complémentaire
+## 8. Pistes d’amélioration
+
+Synthèse des axes d’évolution identifiés pour NewsFoundry. Le détail (métriques, objectifs chiffrés, plans d’implémentation) est développé dans **`docs/EVOLUTIONS_IA.md`** (partie IA) et **`docs/REGARD_CRITIQUE_PERFORMANCE.md`** (fluidité, latence, observabilité).
+
+### Performance et expérience utilisateur
+
+| Piste | Constat | Direction |
+|-------|---------|-----------|
+| **Streaming des réponses chat** | L’utilisateur attend la réponse HTTP complète avant affichage. | Endpoint SSE ou chunked + mise à jour incrémentale côté Next.js ; objectif : réduire le *time-to-first-token* perçu. |
+| **Latence revue de presse** | Pipeline synchrone (transcript + RAG optionnel + LLM structuré), durée non journalisée. | Indicateur de progression en UI ; instrumentation des durées `POST /reviews`. |
+| **Observabilité** | Peu de corrélation requête HTTP ↔ étapes agent ↔ appels World News. | MLflow Tracing (ou équivalent) sur `run_agent_reply` et `run_press_review_structured` ; métriques p50/p95. |
+
+### Qualité IA et données
+
+| Piste | Constat | Direction |
+|-------|---------|-----------|
+| **Fiabilité des outils (chat)** | L’outil `rechercher_actualites` peut être sous-utilisé selon le modèle. | Jeux de tests golden avec `TestModel` ; ajustement prompt ou suggestions de recherche en UI. |
+| **Qualité revue (RAG)** | Risque d’hallucination si peu de sources ; RAG dépend des embeddings. | URLs obligatoires dans la sortie structurée ; reranking après retrieval ; objectif fidélité aux sources ≥ 4/5 sur échantillon figé. |
+| **Coût API** | Chaque message, tool-call et revue consomme des quotas LLM / news / embeddings. | Limites par utilisateur, cache top-news court, `NEWSFOUNDRY_DISABLE_RAG` en démo. |
+
+### Produit et exploitation
+
+| Piste | Constat | Direction |
+|-------|---------|-----------|
+| **Erreurs utilisateur** | Erreurs LLM parfois visibles en texte dans le chat. | Codes internes + message générique ; corrélation `request-id` dans les logs ; cible &lt; 2 % de réponses « erreur technique » visibles. |
+| **Tests de non-régression qualité** | Pas de jeu de référence ni scores en CI pour les réponses IA. | Échantillon de prompts/revues attendues ; évaluation automatisée ou LLM-as-judge en pipeline optionnel. |
+| **Conformité maquette** | Non vérifiable dans le dépôt seul. | Captures d’écran ou lien Figma en soutenance si exigé par le formateur. |
+
+Ces pistes restent **réalistes** au regard de la stack actuelle (FastAPI, PydanticAI, Next.js, Railway, Vercel) sans remettre en cause l’architecture monorepo ni l’isolation multi-utilisateur déjà testée.
+
+---
+
+## 9. Documentation complémentaire
 
 - **`EVOLUTIONS_IA.md`** — Pistes d’amélioration qualité / performance de la partie IA, avec exemples de métriques et objectifs mesurables.
 - **`API_ERREURS.md`** — Principaux codes HTTP et champs `detail` renvoyés par l’API.
 - **`PROMPTS.md`** — Raisons des prompts système et des consignes agents (chat, revue, RAG).
 - **`GRILLE_LIVRABLES.md`** — Tableau de correspondance critères de formation / fichiers du dépôt.
 - **`REGARD_CRITIQUE_PERFORMANCE.md`** — Analyse critique fluidité et qualité perçue.
+- **`RAPPORT_ARCHITECTURE_NEWSFOUNDRY.md`** — Rapport d’architecture détaillé (export Word possible via Pandoc).
 
 Pour le détail installation Postgres, migrations Alembic et déploiement Railway / Vercel / CI sur **`main`**, voir **`backend/README.md`**, **`README.md`** (section Déploiement) et **`docs/DEPLOIEMENT.md`**.

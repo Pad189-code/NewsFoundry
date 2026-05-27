@@ -63,8 +63,8 @@ En production, le **backend** et la **base PostgreSQL** sont hébergés sur **Ra
 #### URL du frontend (production — Vercel)
 
 | | |
-|--|--|https://news-foundry-nvpt-git-main-pad189-codes-projects.vercel.app/
-| **URL du déploiement** | *Renseigner ici l’URL affichée dans le dashboard Vercel (ex. `https://<votre-projet>.vercel.app` ou domaine personnalisé).* |
+|--|--|
+| **URL du déploiement** | [https://news-foundry-nvpt-git-main-pad189-codes-projects.vercel.app/](https://news-foundry-nvpt-git-main-pad189-codes-projects.vercel.app/) |
 | **Où la trouver** | Tableau de bord Vercel : dernier déploiement **Production** → **Visit**, ou **Settings → Domains**. |
 | **Variable côté Vercel** | **`NEXT_PUBLIC_API_URL`** = URL HTTPS du backend Railway (voir ci‑dessous). |
 | **Variable côté backend Railway** | **`CORS_ORIGINS`** doit contenir l’origine exacte du frontend (URL Vercel). |

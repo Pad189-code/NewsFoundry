@@ -18,7 +18,9 @@ Les URLs de référence (API, santé, OpenAPI) sont regroupées dans le **`READM
 
 ## URL du frontend (Vercel)
 
-L’URL de production du frontend est du type **`https://<nom-du-projet>.vercel.app`** (ou domaine personnalisé). Elle est documentée dans le **README** (tableau *URL du frontend*) : **mettez à jour cette ligne** après le premier déploiement réussi pour que les lecteurs du dépôt (correcteurs, équipe) disposent du lien officiel.
+**URL de production actuelle :** [https://news-foundry-nvpt-git-main-pad189-codes-projects.vercel.app/](https://news-foundry-nvpt-git-main-pad189-codes-projects.vercel.app/)
+
+Cette URL est aussi indiquée dans le **README** et dans **`docs/ARCHITECTURE_ET_CHOIX_TECHNIQUES.md`**.
 
 Variable d’environnement côté Vercel :
 
@@ -38,7 +40,16 @@ Configuration attendue pour des mises à jour **à chaque push** sur **`main`** 
 
 2. **Railway** — Service backend connecté au **même dépôt** ; branche de déploiement **`main`** (comportement par défaut du déploiement automatique). Un nouveau commit sur `main` reconstruit et redéploie l’image.
 
-3. **CI GitHub** — Le workflow **`.github/workflows/backend-ci.yml`** exécute **`pytest`** sur les pull requests et pushes ; il peut être utilisé comme garde-fou avant fusion (optionnel : Railway peut attendre la CI selon les réglages du projet).
+3. **CI GitHub** — Le workflow **`.github/workflows/backend-ci.yml`** exécute **`pytest`** sur chaque push / PR, puis **déploie sur Railway** uniquement après un push sur **`main`** (mutation GraphQL `serviceInstanceDeployV2` avec le `commitSha` du push).
+
+   **Secrets GitHub requis** (Settings → Secrets → Actions) :
+
+   | Secret | Rôle |
+   |--------|------|
+   | **`RAILWAY_TOKEN`** | **Token projet** Railway (Projet → Settings → Tokens), pas un token compte personnel si le CLI/API le refuse. |
+   | **`RAILWAY_ENVIRONMENT_ID`** | Optionnel : ID de l’environnement *production* (Cmd+K dans Railway → « Copy Environment ID »). Sinon résolu automatiquement via l’API. |
+
+   **Éviter les doubles déploiements** : si le service Railway est déjà connecté au dépôt GitHub avec déploiement auto sur `main`, désactivez ce déclencheur natif (ou configurez « Wait for CI ») pour ne garder que le déploiement post-tests de GitHub Actions.
 
 ---
 
