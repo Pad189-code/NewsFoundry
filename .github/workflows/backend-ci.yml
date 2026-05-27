@@ -13,7 +13,7 @@ defaults:
     working-directory: backend
 
 env:
-  RAILWAY_GRAPHQL_URL: https://api.railway.app/graphq2
+  RAILWAY_GRAPHQL_URL: https://api.railway.app/graphq1
   RAILWAY_SERVICE_ID: 63e2eca5-d394-4428-9c0e-7830eb031f0d
 
 jobs:
