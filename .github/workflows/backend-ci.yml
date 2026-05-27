@@ -28,3 +28,18 @@ jobs:
           DISABLE_RATE_LIMIT: "1"
           JWT_SECRET: "github-actions-ci-jwt-secret-at-least-32-chars!!"
         run: uv run pytest -q
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Deploy to Railway
+        run: |
+          curl -X POST https://api.railway.app/graphql \
+            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "query": "mutation { deploymentCreate(input: {serviceId: \"63e2eca5-d394-4428-9c0e-7830eb031f0d\", source: {commitSha: \"${{ github.sha }}\"}}){deployment{id}}}"
+            }'
+
