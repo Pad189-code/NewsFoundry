@@ -18,18 +18,26 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "pressreview",
-        sa.Column("review_title", sa.String(), nullable=True),
-    )
-    op.add_column(
-        "pressreview",
-        sa.Column("general_summary", sa.Text(), nullable=True),
-    )
-    op.add_column(
-        "pressreview",
-        sa.Column("articles_breakdown_json", sa.JSON(), nullable=True),
-    )
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+
+    # Only add columns to pressreview if it exists (legacy databases only).
+    # Fresh databases don't have this table.
+    if insp.has_table("pressreview"):
+        op.add_column(
+            "pressreview",
+            sa.Column("review_title", sa.String(), nullable=True),
+        )
+        op.add_column(
+            "pressreview",
+            sa.Column("general_summary", sa.Text(), nullable=True),
+        )
+        op.add_column(
+            "pressreview",
+            sa.Column("articles_breakdown_json", sa.JSON(), nullable=True),
+        )
+
+    # Always add columns to chat (exists in both fresh and legacy databases)
     op.add_column(
         "chat",
         sa.Column("review_display_title", sa.String(), nullable=True),
@@ -48,6 +56,13 @@ def downgrade() -> None:
     op.drop_column("chat", "review_articles_json")
     op.drop_column("chat", "review_general_summary")
     op.drop_column("chat", "review_display_title")
-    op.drop_column("pressreview", "articles_breakdown_json")
-    op.drop_column("pressreview", "general_summary")
-    op.drop_column("pressreview", "review_title")
+
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+
+    # Only drop columns from pressreview if it exists (legacy databases only)
+    if insp.has_table("pressreview"):
+        op.drop_column("pressreview", "articles_breakdown_json")
+        op.drop_column("pressreview", "general_summary")
+        op.drop_column("pressreview", "review_title")
+
