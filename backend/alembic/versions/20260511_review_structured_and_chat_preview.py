@@ -21,6 +21,8 @@ def upgrade() -> None:
     bind = op.get_bind()
     insp = sa.inspect(bind)
 
+    # pressreview table only exists in legacy databases, not in fresh installations.
+    # Skip these operations on fresh databases to avoid "relation does not exist" errors.
     if insp.has_table("pressreview"):
         op.add_column(
             "pressreview",
@@ -57,6 +59,8 @@ def downgrade() -> None:
     op.drop_column("chat", "review_general_summary")
     op.drop_column("chat", "review_display_title")
 
+    # pressreview table only exists in legacy databases, not in fresh installations.
+    # Skip these operations on fresh databases to avoid "relation does not exist" errors.
     if insp.has_table("pressreview"):
         op.drop_column("pressreview", "articles_breakdown_json")
         op.drop_column("pressreview", "general_summary")
