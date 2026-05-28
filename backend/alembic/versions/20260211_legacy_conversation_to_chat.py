@@ -61,6 +61,29 @@ def upgrade() -> None:
         return
 
     if not insp.has_table("conversation"):
+        # Fresh database — no legacy data to migrate, but still need to create
+        # the chat table so subsequent migrations (e.g. add_column) can run.
+        if not insp.has_table("chat"):
+            op.create_table(
+                "chat",
+                sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+                sa.Column("user_id", sa.Integer(), nullable=False),
+                sa.Column("title", sa.String(), nullable=False, server_default="Discussion"),
+                sa.Column(
+                    "created_at",
+                    sa.DateTime(timezone=True),
+                    nullable=False,
+                    server_default=sa.text("now()"),
+                ),
+                sa.Column(
+                    "updated_at",
+                    sa.DateTime(timezone=True),
+                    nullable=False,
+                    server_default=sa.text("now()"),
+                ),
+                sa.Column("messages_json", sa.JSON(), nullable=False, server_default=sa.text("'[]'::json")),
+                sa.ForeignKeyConstraint(["user_id"], ["user.id"]),
+            )
         return
 
     if insp.has_table("chat"):
