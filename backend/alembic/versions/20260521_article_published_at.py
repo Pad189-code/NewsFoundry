@@ -18,13 +18,25 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "article",
-        sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.create_index("ix_article_published_at", "article", ["published_at"])
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+
+    # article table only exists in legacy databases, not in fresh installations.
+    # Skip these operations on fresh databases to avoid "relation does not exist" errors.
+    if insp.has_table("article"):
+        op.add_column(
+            "article",
+            sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
+        )
+        op.create_index("ix_article_published_at", "article", ["published_at"])
 
 
 def downgrade() -> None:
-    op.drop_index("ix_article_published_at", table_name="article")
-    op.drop_column("article", "published_at")
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+
+    # article table only exists in legacy databases, not in fresh installations.
+    # Skip these operations on fresh databases to avoid "relation does not exist" errors.
+    if insp.has_table("article"):
+        op.drop_index("ix_article_published_at", table_name="article")
+        op.drop_column("article", "published_at")
