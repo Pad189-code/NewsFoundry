@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  RAILWAY_GRAPHQL_URL: https://api.railway.app/graphq1
+  RAILWAY_GRAPHQL_URL: https://backboard.railway.com/graphql/v2
   RAILWAY_SERVICE_ID: 63e2eca5-d394-4428-9c0e-7830eb031f0d
 
 jobs:
