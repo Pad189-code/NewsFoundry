@@ -1,7 +1,7 @@
 """Chat.loaded_articles (URLs des articles chargés).
 
 Revision ID: 20260513_loaded_articles
-Revises: 20260511_review_structured
+Revises: 20260514_merge_heads
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20260513_loaded_articles"
-down_revision: Union[str, None] = "20260511_review_structured"
+down_revision: Union[str, None] = "20260514_merge_heads"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
