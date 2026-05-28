@@ -82,7 +82,6 @@ def upgrade() -> None:
                     server_default=sa.text("now()"),
                 ),
                 sa.Column("messages_json", sa.JSON(), nullable=False, server_default=sa.text("'[]'::json")),
-                sa.ForeignKeyConstraint(["user_id"], ["user.id"]),
             )
         return
 
