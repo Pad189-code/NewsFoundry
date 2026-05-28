@@ -63,6 +63,11 @@ def upgrade() -> None:
     if not insp.has_table("conversation"):
         # Fresh database — no legacy data to migrate, but still need to create
         # the chat table so subsequent migrations (e.g. add_column) can run.
+        # Note: The user_id FK constraint is intentionally omitted here because
+        # the user table does not yet exist. It will be created in a follow-up
+        # migration (20260213_chat_user_fk) after the user table is guaranteed
+        # to exist. This ensures fresh and legacy migration paths result in the
+        # same final schema.
         if not insp.has_table("chat"):
             op.create_table(
                 "chat",
